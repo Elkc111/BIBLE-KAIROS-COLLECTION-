@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="obsidian">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kairos</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <button id="btn-passage" class="pill pill-primary" title="Choose Book, Chapter & Verse">
+        <span id="passage-label">John 3</span>
+        <span class="chev">&#9662;</span>
+      </button>
+      <div class="nav-arrows">
+        <button id="btn-prev" class="icon-btn" title="Previous Chapter">&#8592;</button>
+        <button id="btn-next" class="icon-btn" title="Next Chapter">&#8594;</button>
+      </div>
+      <button id="btn-jump" class="pill pill-ghost" title="Quick Jump / Search (Ctrl+K)">
+        Search <kbd>Ctrl+K</kbd>
+      </button>
+    </div>
+
+    <div class="topbar-center" id="slot-pills"></div>
+
+    <div class="topbar-right">
+      <div class="segmented" role="group" aria-label="Layout Mode">
+        <button class="seg-btn active" data-mode-pick="cols" title="3 Side-by-Side Columns">Cols</button>
+        <button class="seg-btn" data-mode-pick="stack" title="Verse-by-Verse Cards">Stack</button>
+        <button class="seg-btn" data-mode-pick="bubbles" title="Scroll Bubbles (East-West)">Bubbles</button>
+        <button class="seg-btn" data-mode-pick="scroll" title="East-West Scroll">Scroll</button>
+      </div>
+      <button id="btn-pins" class="pill pill-ghost" title="Saved Verse Pins">Pins</button>
+      <button id="btn-plan" class="pill pill-ghost">Plan</button>
+      <button id="btn-settings" class="pill pill-ghost">Set</button>
+    </div>
+  </header>
+
+  <div id="col-headers" class="col-headers"></div>
+
+  <div id="cc-legend" class="cc-legend hidden">
+    <span><i class="dot dot-god"></i>Names of God</span>
+    <span><i class="dot dot-person"></i>People</span>
+    <span><i class="dot dot-place"></i>Places</span>
+  </div>
+
+  <section id="daily-card-wrap" class="daily-card-wrap hidden">
+    <div class="daily-card">
+      <div class="daily-card-head">
+        <div>
+          <span class="daily-eyebrow">Daily Verse Trio</span>
+          <strong id="daily-ref" class="daily-ref"></strong>
+        </div>
+        <div class="daily-actions">
+          <span id="read-badge" class="read-badge hidden">Read today &#10003;</span>
+          <button id="btn-daily-plan-go" class="pill pill-primary">Continue Plan</button>
+          <button id="btn-daily-open" class="pill pill-ghost">Open Chapter</button>
+          <button id="btn-daily-close" class="close-btn" title="Dismiss">&times;</button>
+        </div>
+      </div>
+      <div id="daily-trio" class="daily-trio"></div>
+    </div>
+  </section>
+
+  <main id="reader" class="reader"></main>
+
+  <footer class="bottom-nav">
+    <button id="btn-prev-bottom" class="pill pill-ghost">&#8592; Previous</button>
+    <span id="bottom-meta" class="bottom-meta"></span>
+    <button id="btn-next-bottom" class="pill pill-ghost">Next &#8594;</button>
+  </footer>
+
+  <!-- Passage Picker -->
+  <div id="modal-passage" class="modal hidden">
+    <div class="modal-card passage-card">
+      <div class="modal-head">
+        <div class="testament-tabs">
+          <button id="tab-ot" class="tab-btn">Old Testament</button>
+          <button id="tab-nt" class="tab-btn active">New Testament</button>
+          <button id="tab-all" class="tab-btn">All</button>
+        </div>
+        <input id="book-filter" class="book-filter" type="text" placeholder="Filter book..." autocomplete="off" />
+        <button class="close-btn" data-close="modal-passage">&times;</button>
+      </div>
+      <div class="passage-body">
+        <div id="book-list" class="book-list"></div>
+        <div class="passage-right">
+          <div id="chapter-step" class="chapter-grid"></div>
+          <div id="verse-step" class="verse-step hidden">
+            <div class="verse-step-head">
+              <button id="btn-back-chapters" class="pill pill-ghost">&#8592; Chapters</button>
+              <strong id="verse-step-title"></strong>
+              <button id="btn-open-chap-now" class="pill pill-primary">Open Whole Chapter</button>
+            </div>
+            <div id="verse-grid" class="chapter-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search Modal -->
+  <div id="modal-search" class="modal hidden">
+    <div class="modal-card search-card">
+      <div class="search-input-wrap">
+        <input id="search-input" type="text" placeholder="Type reference (e.g. Rom 8, Prov 24:16) or search words..." autocomplete="off" />
+        <span id="search-scope" class="search-scope">in BSB</span>
+      </div>
+      <div id="search-results" class="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Pins / Bookmarks Modal -->
+  <div id="modal-pins" class="modal hidden">
+    <div class="modal-card drawer-card">
+      <div class="modal-head">
+        <h3>Pinned Verses</h3>
+        <button class="close-btn" data-close="modal-pins">&times;</button>
+      </div>
+      <div id="pins-toolbar" class="pins-toolbar"></div><div id="pins-list" class="plan-days"></div>
+    </div>
+  </div>
+
+  <!-- Reading Plans Drawer -->
+  <div id="modal-plan" class="modal hidden">
+    <div class="modal-card drawer-card">
+      <div class="modal-head">
+        <h3>Daily Reading Plans</h3>
+        <button class="close-btn" data-close="modal-plan">&times;</button>
+      </div>
+      <div class="plan-select-row">
+        <select id="plan-select"></select>
+        <span id="plan-progress" class="plan-progress"></span>
+      </div>
+      <div id="plan-days" class="plan-days"></div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="modal-settings" class="modal hidden">
+    <div class="modal-card settings-card">
+      <div class="modal-head">
+        <h3>Reading Sanctuary &amp; Guide</h3>
+        <button class="close-btn" data-close="modal-settings">&times;</button>
+      </div>
+      <div class="settings-scroll">
+        <div class="setting-block">
+          <div class="setting-label">Theme <small>Pick any bright paper, warm scroll wood, or calm dark study palette.</small></div>
+          <div class="theme-grid">
+            <button class="theme-chip" data-theme-pick="obsidian"><span class="swatch sw-obsidian"></span>Obsidian</button>
+            <button class="theme-chip" data-theme-pick="slate"><span class="swatch sw-slate"></span>Slate-Grey</button>
+            <button class="theme-chip" data-theme-pick="parchment"><span class="swatch sw-parchment"></span>Parchment</button>
+            <button class="theme-chip" data-theme-pick="wood"><span class="swatch sw-wood"></span>Scroll &amp; Wood</button>
+            <button class="theme-chip" data-theme-pick="stone"><span class="swatch sw-stone"></span>Cathedral Stone</button>
+            <button class="theme-chip" data-theme-pick="terracotta"><span class="swatch sw-terracotta"></span>Olive &amp; Clay</button>
+            <button class="theme-chip" data-theme-pick="cedar"><span class="swatch sw-cedar"></span>Cedar Dusk</button>
+            <button class="theme-chip" data-theme-pick="indigo"><span class="swatch sw-indigo"></span>Midnight Indigo</button>
+            <button class="theme-chip" data-theme-pick="plum"><span class="swatch sw-plum"></span>Velvet Plum</button>
+          </div>
+        </div>
+
+        <div class="setting-row-explained">
+          <div>
+            <strong>Scroll Layout Style</strong>
+            <small><em>Ribbon Flow</em> unrolls 3 continuous horizontal tracks; <em>Compact Folio</em> packs wide multi-verse sheets.</small>
+          </div>
+          <div class="segmented">
+            <button class="seg-btn" data-scroll-pick="ribbon">Ribbon</button>
+            <button class="seg-btn" data-scroll-pick="compact">Compact</button>
+          </div>
+        </div>
+
+        <div class="setting-row-explained">
+          <div>
+            <strong>Color Coding</strong>
+            <small>Subtly highlights Names of God, People, and Places so you spot who &amp; where at a glance.</small>
+          </div>
+          <label class="switch">
+            <input id="toggle-color-code" type="checkbox" checked />
+          </label>
+        </div>
+
+        <div class="setting-row-explained">
+          <div>
+            <strong>Clean KJV &para; Marks</strong>
+            <small>Hides old pilcrow (&para;) symbols inside KJV verses for smoother reading.</small>
+          </div>
+          <label class="switch">
+            <input id="toggle-pilcrow" type="checkbox" checked />
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <strong>Font Style</strong>
+            <small class="inline-sub">Apply one font to all columns, or mix per slot.</small>
+            <div id="font-target-pills" class="segmented" style="margin-top:6px;">
+              <button class="seg-btn active" data-font-target="all">All</button>
+              <button class="seg-btn" data-font-target="0">Slot 1</button>
+              <button class="seg-btn" data-font-target="1">Slot 2</button>
+              <button class="seg-btn" data-font-target="2">Slot 3</button>
+            </div>
+          </div>
+          <div class="segmented" style="flex-wrap:wrap">
+            <button class="seg-btn" data-font-pick="editorial">Editorial</button>
+            <button class="seg-btn" data-font-pick="olde">Ye Olde</button>
+            <button class="seg-btn" data-font-pick="chancery">Chancery</button>
+            <button class="seg-btn" data-font-pick="sans">Sans</button>
+            <button class="seg-btn" data-font-pick="mono">Mono</button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <strong>Line Rhythm</strong>
+            <small class="inline-sub">Vertical breathing room between lines of Scripture.</small>
+          </div>
+          <div class="segmented">
+            <button class="seg-btn" data-rhythm-pick="snug">Snug</button>
+            <button class="seg-btn" data-rhythm-pick="balanced">Balanced</button>
+            <button class="seg-btn" data-rhythm-pick="relaxed">Relaxed</button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <span><strong>Text Size</strong> (<strong id="font-size-val">18px</strong>)</span>
+          <input id="font-slider" type="range" min="15" max="32" value="18" />
+        </div>
+
+        <div class="setting-guide">
+          <strong>Quick Guide</strong>
+          <small><strong>Lenses:</strong> <em>Word-for-Word</em> sticks closest to Hebrew/Greek phrasing; <em>Balanced</em> blends precision with flow; <em>Thought-for-Thought</em> reads in natural everyday English.</small>
+          <small><strong>East &rarr; West Scroll:</strong> Switch to <em>Bubbles</em> or <em>Scroll</em>, then roll your mouse wheel to glide sideways across the chapter.</small>
+        </div>
+
+        <div class="setting-footer">
+          <button id="btn-show-daily" class="pill pill-ghost">Show Today's Trio</button>
+          <button id="btn-read-default" class="pill pill-primary">Read in Default</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="slot-menu" class="slot-menu hidden"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
