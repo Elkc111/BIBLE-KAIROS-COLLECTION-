@@ -32,7 +32,6 @@ fn default_pin_folder() -> String {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-#[derive(Serialize, Deserialize, Clone)]
 struct HistoryEntry {
     book_id: i64,
     book_name: String,

@@ -59,7 +59,7 @@ jobs:
           RUSTFLAGS: "-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"
         run: |
           rm -rf src-tauri/gen/android
-          npx tauri android init
+          npx tauri android init --ci
           cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
           npx tauri android build --apk --target aarch64
       - name: Sign APK for direct install
