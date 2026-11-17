@@ -204,6 +204,9 @@ let state = {
   dailyVerse: null,
   lastReadDate: null,
   selectedVerse: null,
+  selEnd: null,
+  pinDraftFolder: null,
+  pinsTab: "pins",
   pickerTestament: "NT",
   pickerBookId: 43,
   pickerChapter: null,
@@ -214,6 +217,7 @@ let state = {
 };
 
 let readTimer = null;
+let historyTimer = null;
 
 function lensFor(code) {
   return LENS_MAP[code.toUpperCase()] || "Translation";
@@ -245,10 +249,87 @@ function showToast(msg) {
   showToast._t = setTimeout(() => el.classList.add("hidden"), 1800);
 }
 
+
+function isVerseSelected(v) {
+  if (state.selectedVerse === null) return false;
+  const a = Math.min(state.selectedVerse, state.selEnd ?? state.selectedVerse);
+  const b = Math.max(state.selectedVerse, state.selEnd ?? state.selectedVerse);
+  return v >= a && v <= b;
+}
+
 function isPinned(bookId, chapter, verse) {
-  return (state.prefs.pins || []).some(
-    (p) => p.book_id === bookId && p.chapter === chapter && p.verse === verse
-  );
+  return (state.prefs.pins || []).some((p) => {
+    const endV = p.end_verse || p.verse;
+    return p.book_id === bookId && p.chapter === chapter && verse >= p.verse && verse <= endV;
+  });
+}
+
+function openPinPopup(clickedVerse) {
+  const book = bookById(state.prefs.book_id);
+  const maxV = state.rows.length ? state.rows[state.rows.length - 1].verse : clickedVerse;
+  let startV = clickedVerse;
+  let endV = clickedVerse;
+  if (isVerseSelected(clickedVerse)) {
+    startV = Math.min(state.selectedVerse, state.selEnd ?? state.selectedVerse);
+    endV = Math.max(state.selectedVerse, state.selEnd ?? state.selectedVerse);
+  }
+  state.pinDraftFolder = state.prefs.last_pin_folder || "General";
+
+  document.getElementById("pin-book-chap").textContent = `${book.name} ${state.prefs.chapter}:`;
+  const sInp = document.getElementById("pin-start-v");
+  const eInp = document.getElementById("pin-end-v");
+  sInp.max = maxV; eInp.max = maxV;
+  sInp.value = startV; eInp.value = endV;
+  document.getElementById("pin-pop-new").value = "";
+
+  const drawGroups = () => {
+    const folders = allPinFolders();
+    const wrap = document.getElementById("pin-pop-groups");
+    wrap.innerHTML = folders
+      .map((f) => `<button class="pin-pill ${state.pinDraftFolder === f ? "active" : ""}" data-draft-f="${escapeHtml(f)}">${escapeHtml(f)}</button>`)
+      .join("");
+    wrap.querySelectorAll("[data-draft-f]").forEach((btn) => {
+      btn.onclick = () => {
+        state.pinDraftFolder = btn.dataset.draftF;
+        drawGroups();
+        document.getElementById("btn-pin-save").focus();
+      };
+    });
+  };
+  drawGroups();
+  openModal("modal-pin-pop");
+  setTimeout(() => document.getElementById("btn-pin-save").focus(), 20);
+}
+
+async function savePinFromPopup() {
+  const book = bookById(state.prefs.book_id);
+  const a = Math.max(1, Number(document.getElementById("pin-start-v").value) || 1);
+  const b = Math.max(a, Number(document.getElementById("pin-end-v").value) || a);
+  const typedNew = document.getElementById("pin-pop-new").value.trim();
+  const folder = typedNew || state.pinDraftFolder || "General";
+  if (typedNew && !state.customFolders.includes(typedNew)) {
+    state.customFolders.push(typedNew);
+  }
+
+  const primary = state.prefs.slots[0];
+  const row = state.rows.find((r) => r.verse === a);
+  const snippet = cleanDisplayText(row?.cells[primary]?.text || "").slice(0, 120);
+
+  state.prefs.pins.unshift({
+    book_id: book.id,
+    book_name: book.name,
+    chapter: state.prefs.chapter,
+    verse: a,
+    end_verse: b > a ? b : null,
+    snippet,
+    folder,
+  });
+  state.prefs.last_pin_folder = folder;
+  document.getElementById("modal-pin-pop").classList.add("hidden");
+  await persistPrefs();
+  renderReader();
+  const ref = b > a ? `${book.name} ${state.prefs.chapter}:${a}–${b}` : `${book.name} ${state.prefs.chapter}:${a}`;
+  showToast(`Pinned ${ref} -> ${folder}`);
 }
 
 async function togglePin(verseNum) {
@@ -287,11 +368,24 @@ async function markReadToday() {
   document.getElementById("read-badge").classList.remove("hidden");
 }
 
+async function logRecentVisit() {
+  const b = bookById(state.prefs.book_id);
+  if (!b) return;
+  if (!state.prefs.history) state.prefs.history = [];
+  const v = state.selectedVerse || null;
+  state.prefs.history = state.prefs.history.filter(
+    (h) => !(h.book_id === b.id && h.chapter === state.prefs.chapter && (h.verse || null) === v)
+  );
+  state.prefs.history.unshift({ book_id: b.id, book_name: b.name, chapter: state.prefs.chapter, verse: v });
+  state.prefs.history = state.prefs.history.slice(0, 25);
+  await persistPrefs();
+}
+
 function scheduleReadCheck() {
   clearTimeout(readTimer);
-  readTimer = setTimeout(() => {
-    markReadToday();
-  }, 18000);
+  clearTimeout(historyTimer);
+  historyTimer = setTimeout(() => { logRecentVisit(); }, 10000);
+  readTimer = setTimeout(() => { markReadToday(); }, 18000);
 }
 
 async function persistPrefs() {
@@ -479,7 +573,7 @@ function renderReader() {
   if (state.prefs.view_mode === "cols") {
     const rowsHtml = state.rows
       .map((row) => {
-        const selectedClass = state.selectedVerse === row.verse ? "selected" : "";
+        const selectedClass = isVerseSelected(row.verse) ? "selected" : "";
         const cellsHtml = state.prefs.slots
           .map((code, slotIdx) => {
             const cell = row.cells[code];
@@ -498,7 +592,7 @@ function renderReader() {
   } else if (state.prefs.view_mode === "stack") {
     const cardsHtml = state.rows
       .map((row) => {
-        const selectedClass = state.selectedVerse === row.verse ? "selected" : "";
+        const selectedClass = isVerseSelected(row.verse) ? "selected" : "";
         const linesHtml = state.prefs.slots
           .map((code, slotIdx) => {
             const cell = row.cells[code];
@@ -518,7 +612,7 @@ function renderReader() {
   } else if (state.prefs.view_mode === "bubbles") {
     const bubblesHtml = state.rows
       .map((row) => {
-        const selectedClass = state.selectedVerse === row.verse ? "selected" : "";
+        const selectedClass = isVerseSelected(row.verse) ? "selected" : "";
         const slotsHtml = state.prefs.slots
           .map((code, slotIdx) => {
             const cell = row.cells[code];
@@ -557,7 +651,7 @@ function renderReader() {
       });
 
       state.rows.forEach((row) => {
-        const sel = state.selectedVerse === row.verse ? "selected" : "";
+        const sel = isVerseSelected(row.verse) ? "selected" : "";
         gridHtml += `<div class="ribbon-col-head ${sel}" data-verse="${row.verse}">Verse ${row.verse}${actionButtonsHtml(row.verse)}</div>`;
         state.prefs.slots.forEach((code, slotIdx) => {
           const cell = row.cells[code];
@@ -571,7 +665,7 @@ function renderReader() {
     } else {
       const foliosHtml = state.rows
         .map((row) => {
-          const selectedClass = state.selectedVerse === row.verse ? "selected" : "";
+          const selectedClass = isVerseSelected(row.verse) ? "selected" : "";
           const colsHtml = state.prefs.slots
             .map((code) => {
               const cell = row.cells[code];
@@ -608,7 +702,15 @@ function renderReader() {
     el.addEventListener("click", (e) => {
       if (e.target.dataset.copy || e.target.dataset.pin) return;
       const v = Number(el.dataset.verse);
-      state.selectedVerse = state.selectedVerse === v ? null : v;
+      if (e.shiftKey && state.selectedVerse !== null) {
+        state.selEnd = v;
+      } else if (state.selectedVerse === v && (state.selEnd === null || state.selEnd === v)) {
+        state.selectedVerse = null;
+        state.selEnd = null;
+      } else {
+        state.selectedVerse = v;
+        state.selEnd = v;
+      }
       renderReader();
     });
   });
@@ -616,7 +718,7 @@ function renderReader() {
   reader.querySelectorAll("[data-pin]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      togglePin(Number(btn.dataset.pin));
+      openPinPopup(Number(btn.dataset.pin));
     });
   });
 
@@ -624,23 +726,30 @@ function renderReader() {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const v = Number(btn.dataset.copy);
-      const row = state.rows.find((r) => r.verse === v);
-      if (!row) return;
       const b = bookById(state.prefs.book_id);
-      const lines = state.prefs.slots
-        .map((c) => row.cells[c] ? `[${c}] ${cleanDisplayText(row.cells[c].text)}` : "")
-        .filter(Boolean)
-        .join("\n");
-      await navigator.clipboard.writeText(`${b.name} ${state.prefs.chapter}:${v}\n${lines}`);
-      showToast(`Copied ${b.name} ${state.prefs.chapter}:${v}`);
+      const startV = isVerseSelected(v) ? Math.min(state.selectedVerse, state.selEnd ?? state.selectedVerse) : v;
+      const endV = isVerseSelected(v) ? Math.max(state.selectedVerse, state.selEnd ?? state.selectedVerse) : v;
+      const picked = state.rows.filter((r) => r.verse >= startV && r.verse <= endV);
+      if (!picked.length) return;
+      const blocks = picked.map((row) => {
+        const prefix = picked.length > 1 ? `v.${row.verse} ` : "";
+        return state.prefs.slots
+          .map((c) => row.cells[c] ? `${prefix}[${c}] ${cleanDisplayText(row.cells[c].text)}` : "")
+          .filter(Boolean)
+          .join("\n");
+      }).join("\n\n");
+      const ref = endV > startV ? `${b.name} ${state.prefs.chapter}:${startV}–${endV}` : `${b.name} ${state.prefs.chapter}:${startV}`;
+      await navigator.clipboard.writeText(`${ref}\n${blocks}`);
+      showToast(`Copied ${ref}`);
     });
   });
 }
 
-async function loadChapter(bookId, chapter, targetVerse = null) {
+async function loadChapter(bookId, chapter, targetVerse = null, targetEnd = null) {
   state.prefs.book_id = bookId;
   state.prefs.chapter = chapter;
   state.selectedVerse = targetVerse;
+  state.selEnd = targetEnd ?? targetVerse;
   state.rows = await invoke("get_chapter", {
     bookId,
     chapter,
@@ -776,7 +885,44 @@ function allPinFolders() {
   return Array.from(set);
 }
 
+
+function renderRecentList() {
+  const recEl = document.getElementById("recent-list");
+  const items = state.prefs.history || [];
+  if (!items.length) {
+    recEl.innerHTML = `<div class="plan-day"><span style="color:var(--text-muted)">Stay on any chapter for 10 seconds and it appears here automatically.</span></div>`;
+    return;
+  }
+  recEl.innerHTML = `<div style="display:flex;justify-content:flex-end;padding-bottom:4px;"><button id="btn-clear-recent" class="pill pill-ghost" style="font-size:12px;">Clear History</button></div>` +
+    items.map((h, i) => `
+      <div class="plan-day">
+        <div class="plan-day-left"><strong>${escapeHtml(h.book_name)} ${h.chapter}${h.verse ? ":" + h.verse : ""}</strong></div>
+        <button class="pill pill-primary" data-rec-open="${i}">Open</button>
+      </div>
+    `).join("");
+
+  recEl.querySelector("#btn-clear-recent").onclick = async () => {
+    state.prefs.history = [];
+    await persistPrefs();
+    renderRecentList();
+  };
+  recEl.querySelectorAll("[data-rec-open]").forEach((btn) => {
+    btn.onclick = () => {
+      const h = items[Number(btn.dataset.recOpen)];
+      closeAllModals();
+      loadChapter(h.book_id, h.chapter, h.verse || null);
+    };
+  });
+}
+
 function renderPinsModal() {
+  const isPins = state.pinsTab !== "recent";
+  document.getElementById("tab-pins-view").classList.toggle("active", isPins);
+  document.getElementById("tab-recent-view").classList.toggle("active", !isPins);
+  document.getElementById("pins-toolbar").classList.toggle("hidden", !isPins);
+  document.getElementById("pins-list").classList.toggle("hidden", !isPins);
+  document.getElementById("recent-list").classList.toggle("hidden", isPins);
+  if (!isPins) { renderRecentList(); return; }
   const folders = allPinFolders();
   const bar = document.getElementById("pins-toolbar");
   bar.innerHTML = ["All", ...folders]
@@ -812,7 +958,7 @@ function renderPinsModal() {
       <div class="plan-day">
         <div class="plan-day-left" style="flex-direction:column;align-items:flex-start;gap:4px;">
           <div style="display:flex;align-items:center;gap:8px;">
-            <strong>${escapeHtml(p.book_name)} ${p.chapter}:${p.verse}</strong>
+            <strong>${escapeHtml(p.book_name)} ${p.chapter}:${p.verse}${p.end_verse && p.end_verse > p.verse ? "–" + p.end_verse : ""}</strong>
             <select class="pin-folder-sel" data-pin-move="${idx}">${opts}</select>
           </div>
           <span class="pin-snippet">${escapeHtml(p.snippet)}...</span>
@@ -837,7 +983,7 @@ function renderPinsModal() {
     btn.onclick = () => {
       const p = pins[Number(btn.dataset.pinOpen)];
       document.getElementById("modal-pins").classList.add("hidden");
-      loadChapter(p.book_id, p.chapter, p.verse);
+      loadChapter(p.book_id, p.chapter, p.verse, p.end_verse || null);
     };
   });
   list.querySelectorAll("[data-pin-del]").forEach((btn) => {
@@ -948,13 +1094,46 @@ function renderPlanModal() {
     };
   });
 
+  const nextItem = plan.days.find((d) => !done.has(d.day)) || plan.days[0];
+  const bannerEl = document.getElementById("plan-next-banner");
+  if (nextItem) {
+    bannerEl.classList.remove("hidden");
+    bannerEl.innerHTML = `<span><strong>Next Up &mdash; Day ${nextItem.day}:</strong> ${escapeHtml(nextItem.label)}</span><button id="btn-plan-next-go" class="pill pill-primary">Read Now</button>`;
+    bannerEl.querySelector("#btn-plan-next-go").onclick = () => {
+      closeAllModals();
+      markReadToday();
+      loadChapter(nextItem.bookId, nextItem.chapter);
+    };
+    setTimeout(() => {
+      const targetRow = list.querySelector(`input[data-day="${nextItem.day}"]`)?.closest(".plan-day");
+      if (targetRow) targetRow.scrollIntoView({ block: "center" });
+    }, 20);
+  }
+
   list.querySelectorAll("[data-open-b]").forEach((btn) => {
     btn.onclick = () => {
-      document.getElementById("modal-plan").classList.add("hidden");
+      closeAllModals();
       markReadToday();
       loadChapter(Number(btn.dataset.openB), Number(btn.dataset.openC));
     };
   });
+}
+
+
+function closeAllModals(fromPop = false) {
+  document.querySelectorAll(".modal").forEach((m) => m.classList.add("hidden"));
+  document.getElementById("slot-menu").classList.add("hidden");
+  if (!fromPop && history.state && history.state.kairosModal) {
+    history.back();
+  }
+}
+
+function openModal(id) {
+  document.querySelectorAll(".modal").forEach((m) => m.classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+  if (!history.state || !history.state.kairosModal) {
+    history.pushState({ kairosModal: true }, "");
+  }
 }
 
 async function init() {
@@ -963,6 +1142,7 @@ async function init() {
   state.books = boot.books;
   state.prefs = boot.prefs;
   if (state.prefs.view_mode === "sheet") state.prefs.view_mode = "scroll";
+  if (window.innerWidth <= 720 && window.innerHeight > window.innerWidth && state.prefs.view_mode === "cols") state.prefs.view_mode = "stack";
   state.lastReadDate = boot.last_read_date;
 
   applyThemeAndTypography();
@@ -1027,7 +1207,7 @@ async function init() {
     state.pickerFilter = "";
     document.getElementById("book-filter").value = "";
     renderPassagePicker();
-    document.getElementById("modal-passage").classList.remove("hidden");
+    openModal("modal-passage");
   };
   document.getElementById("tab-ot").onclick = () => {
     state.pickerTestament = "OT";
@@ -1060,13 +1240,24 @@ async function init() {
     loadChapter(state.pickerBookId, state.pickerChapter || 1);
   };
 
+  document.getElementById("btn-pin-save").onclick = savePinFromPopup;
+  document.getElementById("modal-pin-pop").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      savePinFromPopup();
+    }
+  });
+
+  document.getElementById("tab-pins-view").onclick = () => { state.pinsTab = "pins"; renderPinsModal(); };
+  document.getElementById("tab-recent-view").onclick = () => { state.pinsTab = "recent"; renderPinsModal(); };
+  window.addEventListener("popstate", () => closeAllModals(true));
   document.getElementById("btn-pins").onclick = () => {
     renderPinsModal();
-    document.getElementById("modal-pins").classList.remove("hidden");
+    openModal("modal-pins");
   };
 
   const openSearch = () => {
-    document.getElementById("modal-search").classList.remove("hidden");
+    openModal("modal-search");
     const inp = document.getElementById("search-input");
     inp.focus();
     inp.select();
@@ -1077,7 +1268,7 @@ async function init() {
 
   document.getElementById("btn-plan").onclick = () => {
     renderPlanModal();
-    document.getElementById("modal-plan").classList.remove("hidden");
+    openModal("modal-plan");
   };
   document.getElementById("plan-select").onchange = async (e) => {
     state.prefs.active_plan = e.target.value;
@@ -1086,7 +1277,7 @@ async function init() {
   };
 
   document.getElementById("btn-settings").onclick = () => {
-    document.getElementById("modal-settings").classList.remove("hidden");
+    openModal("modal-settings");
   };
   document.querySelectorAll("[data-theme-pick]").forEach((btn) => {
     btn.onclick = async () => {
@@ -1167,9 +1358,46 @@ async function init() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
       e.preventDefault();
       openSearch();
-    } else if (e.key === "Escape") {
-      document.querySelectorAll(".modal").forEach((m) => m.classList.add("hidden"));
-      document.getElementById("slot-menu").classList.add("hidden");
+      return;
+    }
+    if (e.key === "Escape") {
+      closeAllModals();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target && e.target.matches("input, textarea, select")) return;
+    if (Array.from(document.querySelectorAll(".modal")).some((m) => !m.classList.contains("hidden"))) return;
+
+    const k = e.key.toLowerCase();
+    const ew = document.getElementById("ew-stage");
+    if (k === "w") {
+      e.preventDefault();
+      if (ew && state.prefs.view_mode === "scroll" && state.prefs.scroll_style !== "compact") {
+        ew.scrollBy({ top: -180, behavior: "smooth" });
+      } else {
+        window.scrollBy({ top: -220, behavior: "smooth" });
+      }
+    } else if (k === "s") {
+      e.preventDefault();
+      if (ew && state.prefs.view_mode === "scroll" && state.prefs.scroll_style !== "compact") {
+        ew.scrollBy({ top: 180, behavior: "smooth" });
+      } else {
+        window.scrollBy({ top: 220, behavior: "smooth" });
+      }
+    } else if (k === "a") {
+      e.preventDefault();
+      if (ew) ew.scrollBy({ left: -280, behavior: "smooth" });
+      else stepChapter(-1);
+    } else if (k === "d") {
+      e.preventDefault();
+      if (ew) ew.scrollBy({ left: 280, behavior: "smooth" });
+      else stepChapter(1);
+    } else if (k === "q" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      stepChapter(-1);
+    } else if (k === "e" || e.key === "ArrowRight") {
+      e.preventDefault();
+      stepChapter(1);
     }
   });
 }

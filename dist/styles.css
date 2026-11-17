@@ -762,3 +762,43 @@ html[data-theme="wood"] .verse-row {
   .ribbon-stage { grid-template-columns: 90px; grid-auto-columns: 72vw; }
   .ribbon-rail { width: 90px; padding: 10px 8px; }
 }
+
+/* === MULTIPIN POPUP === */
+.pin-pop-card { width: 440px; max-width: 94vw; }
+.pin-pop-body { padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+.pin-range-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; font-weight: 600; }
+.pin-range-row input {
+  width: 58px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font-size: 13px; text-align: center;
+}
+.pin-pop-label { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.pin-pop-label small { font-weight: 400; color: var(--text-muted); }
+.pin-pop-groups { display: flex; flex-wrap: wrap; gap: 7px; }
+.pin-pop-actions { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+
+/* === V1.1 QOL & MOBILE === */
+.plan-next-banner {
+  margin: 10px 16px 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+@media (pointer: coarse) {
+  .desktop-only, kbd, .ew-hint { display: none !important; }
+}
+@media (max-width: 720px) and (orientation: portrait) {
+  [data-mode-pick="cols"] { display: none !important; }
+}
+@media (max-height: 480px) and (orientation: landscape) {
+  .topbar { padding: 6px 12px; }
+  .chapter-banner { margin: 2px 0 10px; }
+  .chapter-banner h1 { font-size: 20px; }
+  .ribbon-stage { max-height: calc(100vh - 150px); grid-auto-columns: 44vw; }
+}

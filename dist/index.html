@@ -115,10 +115,36 @@
   <div id="modal-pins" class="modal hidden">
     <div class="modal-card drawer-card">
       <div class="modal-head">
-        <h3>Pinned Verses</h3>
+        <div class="testament-tabs">
+          <button id="tab-pins-view" class="tab-btn active">Pins</button>
+          <button id="tab-recent-view" class="tab-btn">Recent</button>
+        </div>
         <button class="close-btn" data-close="modal-pins">&times;</button>
       </div>
-      <div id="pins-toolbar" class="pins-toolbar"></div><div id="pins-list" class="plan-days"></div>
+      <div id="pins-toolbar" class="pins-toolbar"></div><div id="pins-list" class="plan-days"></div><div id="recent-list" class="plan-days hidden"></div>
+    </div>
+  </div>
+
+  <!-- Quick Multi-Pin Popup -->
+  <div id="modal-pin-pop" class="modal hidden">
+    <div class="modal-card pin-pop-card">
+      <div class="modal-head">
+        <h3 id="pin-pop-title">Pin Passage</h3>
+        <button class="close-btn" data-close="modal-pin-pop">&times;</button>
+      </div>
+      <div class="pin-pop-body">
+        <div class="pin-range-row">
+          <span id="pin-book-chap">Psalm 91</span>
+          <label>From v. <input id="pin-start-v" type="number" min="1" /></label>
+          <label>to v. <input id="pin-end-v" type="number" min="1" /></label>
+        </div>
+        <div class="pin-pop-label">Save to Group <small>(last used highlighted &mdash; press Enter)</small></div>
+        <div id="pin-pop-groups" class="pin-pop-groups"></div>
+        <div class="pin-pop-actions">
+          <input id="pin-pop-new" class="pin-new-input" style="flex:1;" type="text" placeholder="+ Or type new group name..." />
+          <button id="btn-pin-save" class="pill pill-primary">Save Pin (Enter)</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -133,7 +159,7 @@
         <select id="plan-select"></select>
         <span id="plan-progress" class="plan-progress"></span>
       </div>
-      <div id="plan-days" class="plan-days"></div>
+      <div id="plan-next-banner" class="plan-next-banner hidden"></div><div id="plan-days" class="plan-days"></div>
     </div>
   </div>
 
@@ -229,11 +255,16 @@
         </div>
 
         <div class="setting-guide">
-          <strong>Quick Guide</strong>
+          <strong>Quick Guide &amp; Navigation</strong>
+          <small class="desktop-only"><strong>Keys:</strong> <code>W</code>/<code>S</code> scroll up/down &middot; <code>A</code>/<code>D</code> glide East/West &middot; <code>Q</code>/<code>E</code> or Arrows turn chapters &middot; <code>Ctrl+K</code> search.</small>
           <small><strong>Lenses:</strong> <em>Word-for-Word</em> sticks closest to Hebrew/Greek phrasing; <em>Balanced</em> blends precision with flow; <em>Thought-for-Thought</em> reads in natural everyday English.</small>
           <small><strong>East &rarr; West Scroll:</strong> Switch to <em>Bubbles</em> or <em>Scroll</em>, then roll your mouse wheel to glide sideways across the chapter.</small>
         </div>
 
+        <div class="setting-guide">
+          <strong>Open Scripture Licenses</strong>
+          <small>BSB (CC0 Public Domain) &middot; FBV (CC BY-SA 4.0) &middot; OEB, WEB &amp; KJV (Public Domain).</small>
+        </div>
         <div class="setting-footer">
           <button id="btn-show-daily" class="pill pill-ghost">Show Today's Trio</button>
           <button id="btn-read-default" class="pill pill-primary">Read in Default</button>

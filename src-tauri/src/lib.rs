@@ -32,11 +32,22 @@ fn default_pin_folder() -> String {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
+struct HistoryEntry {
+    book_id: i64,
+    book_name: String,
+    chapter: i64,
+    verse: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 struct PinnedVerse {
     book_id: i64,
     book_name: String,
     chapter: i64,
     verse: i64,
+    #[serde(default)]
+    end_verse: Option<i64>,
     snippet: String,
     #[serde(default = "default_pin_folder")]
     folder: String,
@@ -83,6 +94,10 @@ struct UserPrefs {
     slot_fonts: HashMap<String, String>,
     #[serde(default)]
     daily_dismissed_date: Option<String>,
+    #[serde(default = "default_pin_folder")]
+    last_pin_folder: String,
+    #[serde(default)]
+    history: Vec<HistoryEntry>,
 }
 
 #[derive(Serialize)]
@@ -136,11 +151,17 @@ const DAILY_VERSES: &[(i64, i64, i64)] = &[
     (66, 21, 4),
 ];
 
+#[cfg(target_os = "android")]
+const ANDROID_VAULT_GZ: &[u8] = include_bytes!("../resources/bible_vault.db.gz");
+
 fn resolve_paths(app: &AppHandle) -> (PathBuf, PathBuf) {
-    let mint_vault = PathBuf::from("/home/kaslorin/Desktop/Letah stuff/BIBLE/bible_vault.db");
-    if mint_vault.exists() {
-        let mint_prefs = mint_vault.parent().unwrap().join("kairos_prefs.db");
-        return (mint_vault, mint_prefs);
+    #[cfg(not(any(target_os = "android", target_os = "windows")))]
+    {
+        let mint_vault = PathBuf::from("/home/kaslorin/Desktop/Letah stuff/BIBLE/bible_vault.db");
+        if mint_vault.exists() {
+            let mint_prefs = mint_vault.parent().unwrap().join("kairos_prefs.db");
+            return (mint_vault, mint_prefs);
+        }
     }
 
     let data_dir = app
@@ -150,6 +171,7 @@ fn resolve_paths(app: &AppHandle) -> (PathBuf, PathBuf) {
     let _ = std::fs::create_dir_all(&data_dir);
     let prefs_path = data_dir.join("kairos_prefs.db");
 
+    #[cfg(not(target_os = "android"))]
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             let beside = dir.join("bible_vault.db");
@@ -161,12 +183,22 @@ fn resolve_paths(app: &AppHandle) -> (PathBuf, PathBuf) {
 
     let unpacked = data_dir.join("bible_vault.db");
     if !unpacked.exists() {
+        #[cfg(target_os = "android")]
+        {
+            let mut dec = GzDecoder::new(&ANDROID_VAULT_GZ[..]);
+            let tmp = data_dir.join("bible_vault.tmp");
+            if let Ok(mut out) = std::fs::File::create(&tmp) {
+                if io::copy(&mut dec, &mut out).is_ok() {
+                    let _ = std::fs::rename(&tmp, &unpacked);
+                }
+            }
+        }
+        #[cfg(not(target_os = "android"))]
         if let Ok(res_dir) = app.path().resource_dir() {
-            let candidates = [
+            for gz in [
                 res_dir.join("resources/bible_vault.db.gz"),
                 res_dir.join("bible_vault.db.gz"),
-            ];
-            for gz in candidates {
+            ] {
                 if gz.exists() {
                     if let Ok(f) = std::fs::File::open(&gz) {
                         let mut dec = GzDecoder::new(f);
@@ -217,6 +249,8 @@ fn default_prefs(available: &[TranslationInfo]) -> UserPrefs {
         pins: vec![],
         slot_fonts: HashMap::new(),
         daily_dismissed_date: None,
+        last_pin_folder: default_pin_folder(),
+        history: vec![],
     }
 }
 

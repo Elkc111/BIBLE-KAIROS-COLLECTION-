@@ -1,4 +1,5 @@
-name: Build Windows
+name: Build Windows & Android
+
 on:
   workflow_dispatch:
   push:
@@ -24,3 +25,50 @@ jobs:
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/kairos.exe
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble bible vault
+        run: cat src-tauri/resources/vault_part_* > src-tauri/resources/bible_vault.db.gz
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install Android NDK & Build Tools
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "ndk;27.2.12479018" "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+      - name: Install Linux deps & npm packages
+        run: |
+          sudo apt-get update && sudo apt-get install -y file build-essential
+          npm install --no-audit --no-fund
+      - name: Init & Build Android APK
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+          RUSTFLAGS: "-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"
+        run: |
+          rm -rf src-tauri/gen/android
+          npx tauri android init
+          cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
+          npx tauri android build --apk --target aarch64
+      - name: Sign APK for direct install
+        run: |
+          keytool -genkeypair -v -keystore /tmp/kairos-release.jks -alias kairos -keyalg RSA -keysize 2048 -validity 10000 -storepass kairos123 -keypass kairos123 -dname "CN=Kairos,O=Kairos,C=ZM"
+          RAW_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          "${{ env.ANDROID_HOME }}/build-tools/34.0.0/zipalign" -f -p 4 "$RAW_APK" /tmp/kairos-aligned.apk
+          "${{ env.ANDROID_HOME }}/build-tools/34.0.0/apksigner" sign --ks /tmp/kairos-release.jks --ks-key-alias kairos --ks-pass pass:kairos123 --key-pass pass:kairos123 --out /tmp/Bible-Kairos-Collection.apk /tmp/kairos-aligned.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bible-Kairos-Collection-Android
+          path: /tmp/Bible-Kairos-Collection.apk
