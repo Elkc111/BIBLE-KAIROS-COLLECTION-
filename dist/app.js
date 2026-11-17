@@ -241,6 +241,18 @@ function bookById(id) {
   return state.books.find((b) => b.id === id) || state.books[0];
 }
 
+
+async function shareOrCopy(title, bodyText) {
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text: bodyText });
+      return;
+    } catch (_) {}
+  }
+  await navigator.clipboard.writeText(bodyText);
+  showToast(`Copied ${title}`);
+}
+
 function showToast(msg) {
   const el = document.getElementById("toast");
   el.textContent = msg;
@@ -736,11 +748,10 @@ function renderReader() {
         return state.prefs.slots
           .map((c) => row.cells[c] ? `${prefix}[${c}] ${cleanDisplayText(row.cells[c].text)}` : "")
           .filter(Boolean)
-          .join("\n");
-      }).join("\n\n");
+          .join("\n\n");
+      }).join("\n\n---\n\n");
       const ref = endV > startV ? `${b.name} ${state.prefs.chapter}:${startV}–${endV}` : `${b.name} ${state.prefs.chapter}:${startV}`;
-      await navigator.clipboard.writeText(`${ref}\n${blocks}`);
-      showToast(`Copied ${ref}`);
+      await shareOrCopy(ref, `${ref}\n\n${blocks}`);
     });
   });
 }
@@ -789,7 +800,6 @@ function stepChapter(delta) {
 function openSlotMenu(slotIdx, anchor) {
   const menu = document.getElementById("slot-menu");
   const rect = anchor.getBoundingClientRect();
-  menu.style.left = `${rect.left}px`;
   menu.style.top = `${rect.bottom + 6}px`;
   menu.innerHTML = state.translations
     .map((t) => {
@@ -803,6 +813,8 @@ function openSlotMenu(slotIdx, anchor) {
     })
     .join("");
   menu.classList.remove("hidden");
+  const mw = menu.offsetWidth || 270;
+  menu.style.left = `${Math.max(10, Math.min(rect.left, window.innerWidth - mw - 12))}px`;
 
   menu.querySelectorAll(".slot-option").forEach((btn) => {
     btn.onclick = async () => {
@@ -1137,7 +1149,9 @@ function openModal(id) {
 }
 
 async function init() {
+  await invoke("ensure_ready");
   const boot = await invoke("get_bootstrap");
+  document.getElementById("vault-splash")?.classList.add("hidden");
   state.translations = boot.translations;
   state.books = boot.books;
   state.prefs = boot.prefs;
@@ -1155,6 +1169,17 @@ async function init() {
     state.prefs.daily_dismissed_date = localDateKey();
     await persistPrefs();
   };
+  document.getElementById("btn-daily-share").onclick = async () => {
+    if (!state.dailyVerse) return;
+    const dv = state.dailyVerse;
+    const ref = `${dv.book_name} ${dv.chapter}:${dv.verse}`;
+    const lines = state.prefs.slots
+      .map((c) => dv.cells[c] ? `[${c}] ${cleanDisplayText(dv.cells[c])}` : "")
+      .filter(Boolean)
+      .join("\n\n");
+    await shareOrCopy(ref, `${ref}\n\n${lines}`);
+  };
+
   document.getElementById("btn-daily-open").onclick = () => {
     if (!state.dailyVerse) return;
     loadChapter(state.dailyVerse.book_id, state.dailyVerse.chapter, state.dailyVerse.verse);
@@ -1274,6 +1299,54 @@ async function init() {
     state.prefs.active_plan = e.target.value;
     await persistPrefs();
     renderPlanModal();
+  };
+
+
+  const showImportReport = (rep) => {
+    const box = document.getElementById("import-status");
+    box.classList.remove("hidden");
+    box.innerHTML = `<strong>[${escapeHtml(rep.code)}] ${escapeHtml(rep.name)}</strong><br>` +
+      `Verified: ${rep.books_count}/66 books, ${rep.verses_count.toLocaleString()} verses<br>` +
+      `<em>Gen 1:1:</em> ${escapeHtml(rep.gen1_1.slice(0, 90))}<br>` +
+      `<em>John 3:16:</em> ${escapeHtml(rep.john3_16.slice(0, 90))}`;
+  };
+
+  document.getElementById("inp-import-file").onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const box = document.getElementById("import-status");
+    box.classList.remove("hidden");
+    box.textContent = `Importing ${file.name}...`;
+    try {
+      const buf = await file.arrayBuffer();
+      const rep = await invoke("import_bible_bytes", { filename: file.name, bytes: Array.from(new Uint8Array(buf)) });
+      showImportReport(rep);
+      const boot = await invoke("get_bootstrap");
+      state.translations = boot.translations;
+      showToast(`Added ${rep.code}!`);
+    } catch (err) {
+      box.textContent = `Import error: ${err}`;
+    }
+    e.target.value = "";
+  };
+
+  document.getElementById("btn-scan-dropin").onclick = async () => {
+    const box = document.getElementById("import-status");
+    box.classList.remove("hidden");
+    box.textContent = "Scanning drop_in folder...";
+    try {
+      const [dir, reps] = await invoke("scan_drop_in");
+      if (!reps.length) {
+        box.innerHTML = `No SQLite/e-Sword files found in:<br><code>${escapeHtml(dir)}</code>`;
+      } else {
+        reps.forEach(showImportReport);
+        const boot = await invoke("get_bootstrap");
+        state.translations = boot.translations;
+        showToast(`Imported ${reps.length} Bible(s)`);
+      }
+    } catch (err) {
+      box.textContent = `Scan error: ${err}`;
+    }
   };
 
   document.getElementById("btn-settings").onclick = () => {

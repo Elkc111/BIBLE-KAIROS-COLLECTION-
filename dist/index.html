@@ -2,11 +2,12 @@
 <html lang="en" data-theme="obsidian">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Kairos</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="vault-splash" class="vault-splash">Preparing Bible Vault&hellip;</div>
   <header class="topbar">
     <div class="topbar-left">
       <button id="btn-passage" class="pill pill-primary" title="Choose Book, Chapter & Verse">
@@ -55,6 +56,7 @@
         <div class="daily-actions">
           <span id="read-badge" class="read-badge hidden">Read today &#10003;</span>
           <button id="btn-daily-plan-go" class="pill pill-primary">Continue Plan</button>
+          <button id="btn-daily-share" class="pill pill-ghost">Share / Copy</button>
           <button id="btn-daily-open" class="pill pill-ghost">Open Chapter</button>
           <button id="btn-daily-close" class="close-btn" title="Dismiss">&times;</button>
         </div>
@@ -262,8 +264,17 @@
         </div>
 
         <div class="setting-guide">
-          <strong>Open Scripture Licenses</strong>
-          <small>BSB (CC0 Public Domain) &middot; FBV (CC BY-SA 4.0) &middot; OEB, WEB &amp; KJV (Public Domain).</small>
+          <strong>Import Bible Module (Offline)</strong>
+          <small>Add standard MyBible (<code>.SQLite3</code>), e-Sword (<code>.bblx</code>), MySword, or <code>.db</code> modules. Kairos checks book/verse counts &amp; previews verses automatically.</small>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+            <label class="pill pill-primary" style="display:inline-flex;align-items:center;">Choose File<input id="inp-import-file" type="file" accept=".sqlite3,.sqlite,.bblx,.bbli,.mybible,.db" style="display:none;" /></label>
+            <button id="btn-scan-dropin" class="pill pill-ghost">Scan drop_in/</button>
+          </div>
+          <div id="import-status" class="import-status hidden"></div>
+        </div>
+        <div class="setting-guide">
+          <strong>Open Scripture Licenses &amp; Credits</strong>
+          <small>BSB (CC0 Public Domain) &middot; FBV (CC BY-SA 4.0) &middot; OEB, WEB &amp; KJV (Public Domain).<br><em>Built with Hyares &mdash; Zero ads, offline-first.</em></small>
         </div>
         <div class="setting-footer">
           <button id="btn-show-daily" class="pill pill-ghost">Show Today's Trio</button>

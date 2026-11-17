@@ -802,3 +802,50 @@ html[data-theme="wood"] .verse-row {
   .chapter-banner h1 { font-size: 20px; }
   .ribbon-stage { max-height: calc(100vh - 150px); grid-auto-columns: 44vw; }
 }
+
+/* === V1.2 MOBILE & PORTABLE FIXES === */
+.vault-splash {
+  position: fixed; inset: 0; z-index: 200;
+  background: var(--bg); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-reader); font-size: 20px; letter-spacing: 0.04em;
+}
+.modal-card .segmented {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+}
+.modal-card .seg-btn { color: var(--text) !important; opacity: 0.78; }
+.modal-card .seg-btn.active {
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+  opacity: 1; font-weight: 700;
+}
+.import-status {
+  margin-top: 6px; padding: 8px 10px; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-size: 11.5px; color: var(--text); line-height: 1.45;
+}
+.bubbles-stage, .ribbon-stage, .sheet-stage {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+
+@media (pointer: coarse) {
+  .topbar { padding-top: max(env(safe-area-inset-top, 0px), 34px) !important; }
+  .col-headers { top: 86px; }
+}
+@media (max-width: 760px) {
+  .stack-line { grid-template-columns: 1fr; gap: 4px; }
+  .stack-badge { display: flex; gap: 8px; align-items: baseline; padding-top: 2px; }
+  .stack-lens { display: inline; margin-top: 0; }
+}
+@media (max-width: 760px) and (orientation: portrait) {
+  .ribbon-stage { grid-template-columns: 76px; grid-auto-columns: 76vw; max-height: 62vh; }
+  .ribbon-rail { width: 76px; padding: 8px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .topbar { padding: max(env(safe-area-inset-top, 0px), 6px) 12px 6px !important; grid-template-columns: auto 1fr auto; }
+  .topbar-left, .topbar-center, .topbar-right { flex-wrap: nowrap; }
+  .ribbon-stage { grid-template-columns: 78px; grid-auto-columns: 45vw; max-height: calc(100vh - 125px); }
+  .ribbon-rail { width: 78px; padding: 8px; }
+}
