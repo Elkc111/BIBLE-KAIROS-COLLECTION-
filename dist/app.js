@@ -211,6 +211,7 @@ let state = {
   selEnd: null,
   pinDraftFolder: null,
   pinsTab: "pins",
+  searchScope: null,
   pickerTestament: "NT",
   pickerBookId: 43,
   pickerChapter: null,
@@ -427,6 +428,9 @@ function applyThemeAndTypography() {
 
   document.getElementById("font-slider").value = state.prefs.font_size;
   document.getElementById("font-size-val").textContent = `${state.prefs.font_size}px`;
+  const ws = state.prefs.wasd_step || 220;
+  if (document.getElementById("wasd-slider")) document.getElementById("wasd-slider").value = ws;
+  if (document.getElementById("wasd-step-val")) document.getElementById("wasd-step-val").textContent = `${ws}px`;
   document.getElementById("toggle-pilcrow").checked = state.prefs.clean_pilcrow;
   document.getElementById("toggle-color-code").checked = !!state.prefs.color_code;
   document.getElementById("cc-legend").classList.toggle("hidden", !state.prefs.color_code);
@@ -552,11 +556,19 @@ function attachHorizontalWheel(el) {
   }, { passive: false });
 }
 
+function countPinsFor(bookId, chapter, verse) {
+  return (state.prefs.pins || []).filter((p) => {
+    const endV = p.end_verse || p.verse;
+    return p.book_id === bookId && p.chapter === chapter && verse >= p.verse && verse <= endV;
+  }).length;
+}
+
 function actionButtonsHtml(verseNum) {
-  const pinned = isPinned(state.prefs.book_id, state.prefs.chapter, verseNum);
+  const cnt = countPinsFor(state.prefs.book_id, state.prefs.chapter, verseNum);
+  const pinLabel = cnt > 0 ? `Pin &times;${cnt}` : "Pin";
   return `
     <div class="row-actions">
-      <button class="copy-mini ${pinned ? "pinned" : ""}" data-pin="${verseNum}" title="Pin verse (unlimited)">${pinned ? "Pin &#10003;" : "Pin"}</button>
+      <button class="copy-mini ${cnt > 0 ? "pinned" : ""}" data-pin="${verseNum}" title="Pin verse (unlimited)">${pinLabel}</button>
       <button class="copy-mini" data-share="${verseNum}" title="Share or Copy">Share</button>
     </div>
   `;
@@ -1129,11 +1141,22 @@ function tryParseRef(raw) {
   return { book: match, chapter: chap, verse };
 }
 
+function populateSearchScope() {
+  const sel = document.getElementById("search-scope");
+  if (!sel || !state.prefs) return;
+  if (!state.searchScope) state.searchScope = state.prefs.slots[0];
+  const opts = [
+    ...state.translations.map((t) => [t.code, `in ${t.code}`]),
+    ["ALL", "All Versions"],
+  ];
+  sel.innerHTML = opts.map(([v, l]) => `<option value="${v}" ${v === state.searchScope ? "selected" : ""}>${l}</option>`).join("");
+  sel.onchange = () => { state.searchScope = sel.value; handleSearchInput(); };
+}
+
 async function handleSearchInput() {
   const val = document.getElementById("search-input").value;
   const res = document.getElementById("search-results");
-  const primary = state.prefs.slots[0];
-  document.getElementById("search-scope").textContent = `in ${primary}`;
+  const primary = state.searchScope || state.prefs.slots[0];
 
   if (!val.trim()) {
     res.innerHTML = `<div class="search-hit" style="cursor:default"><div class="search-hit-txt">Try typing a reference like <strong>Rom 8</strong>, <strong>Prov 24:16</strong>, or a keyword like <strong>wisdom</strong>.</div></div>`;
@@ -1396,6 +1419,7 @@ async function init() {
   };
 
   const openSearch = () => {
+    populateSearchScope();
     openModal("modal-search");
     const inp = document.getElementById("search-input");
     inp.focus();
@@ -1594,6 +1618,11 @@ async function init() {
       await persistPrefs();
     };
   });
+  document.getElementById("wasd-slider").oninput = async (e) => {
+    state.prefs.wasd_step = Number(e.target.value);
+    applyThemeAndTypography();
+    await persistPrefs();
+  };
   document.getElementById("font-slider").oninput = async (e) => {
     state.prefs.font_size = Number(e.target.value);
     applyThemeAndTypography();
@@ -1628,52 +1657,138 @@ async function init() {
     }
   });
 
+  const heldKeys = new Set();
+  let glideRaf = null;
+  let lastFrameTs = 0;
+
+  function activeScrollTarget() {
+    const openMod = Array.from(document.querySelectorAll(".modal")).find((m) => !m.classList.contains("hidden"));
+    if (openMod) {
+      let box = null;
+      if (openMod.id === "modal-pins") {
+        const rec = document.getElementById("recent-list");
+        box = rec && !rec.classList.contains("hidden") ? rec : document.getElementById("pins-list");
+      } else {
+        box = openMod.querySelector(".plan-days, .settings-scroll, .search-results, .notepad-list, .passage-right");
+      }
+      return { el: box, isModal: true, allowWASD: true };
+    }
+    return { el: document.getElementById("ew-stage"), isModal: false, allowWASD: true };
+  }
+
+  function applyGlide(dx, dy) {
+    const { el, isModal } = activeScrollTarget();
+    if (dy !== 0) {
+      if (isModal && el) {
+        el.scrollTop += dy;
+      } else if (!isModal && state.prefs.view_mode === "bubbles") {
+        const card = document.querySelector(".bubble-card.selected, .bubble-card:hover") || document.querySelector(".bubble-card");
+        if (card && card.scrollHeight > card.clientHeight + 4) {
+          const before = card.scrollTop;
+          card.scrollTop += dy;
+          if (card.scrollTop === before) window.scrollBy(0, dy);
+        } else {
+          window.scrollBy(0, dy);
+        }
+      } else if (!isModal && el && state.prefs.view_mode === "scroll" && state.prefs.scroll_style !== "compact") {
+        const before = el.scrollTop;
+        el.scrollTop += dy;
+        if (el.scrollTop === before) window.scrollBy(0, dy);
+      } else if (!isModal) {
+        window.scrollBy(0, dy);
+      }
+    }
+    if (dx !== 0 && !isModal && el) {
+      el.scrollLeft += dx;
+    }
+  }
+
+  function glideLoop(now) {
+    if (!heldKeys.size) { glideRaf = null; return; }
+    const dt = lastFrameTs ? Math.min(0.05, (now - lastFrameTs) / 1000) : 0.016;
+    lastFrameTs = now;
+    const dist = ((state.prefs?.wasd_step || 220) * 3.4) * dt;
+    const { el, isModal, allowWASD } = activeScrollTarget();
+
+    let dy = 0, dx = 0;
+    if ((allowWASD && heldKeys.has("w")) || heldKeys.has("arrowup")) dy -= dist;
+    if ((allowWASD && heldKeys.has("s")) || heldKeys.has("arrowdown")) dy += dist;
+    if (!isModal && el) {
+      if (heldKeys.has("a")) dx -= dist * 1.25;
+      if (heldKeys.has("d")) dx += dist * 1.25;
+    }
+    applyGlide(dx, dy);
+    glideRaf = requestAnimationFrame(glideLoop);
+  }
+
+  function startGlide() {
+    if (!glideRaf) { lastFrameTs = 0; glideRaf = requestAnimationFrame(glideLoop); }
+  }
+
+  window.addEventListener("blur", () => {
+    heldKeys.clear();
+    if (glideRaf) { cancelAnimationFrame(glideRaf); glideRaf = null; }
+  });
+  document.addEventListener("keyup", (e) => { heldKeys.delete(e.key.toLowerCase()); });
+
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      openSearch();
-      return;
+      e.preventDefault(); openSearch(); return;
     }
     if (e.key === "Escape") {
       if (document.body.classList.contains("selah-active")) { toggleSelah(false); return; }
-      closeAllModals();
-      return;
+      closeAllModals(); return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target && e.target.matches("input, textarea, select")) return;
-    if (Array.from(document.querySelectorAll(".modal")).some((m) => !m.classList.contains("hidden"))) return;
 
     const k = e.key.toLowerCase();
-    const ew = document.getElementById("ew-stage");
-    if (k === "w") {
+    const { el, isModal } = activeScrollTarget();
+
+    if (["w", "s", "arrowup", "arrowdown"].includes(k)) {
       e.preventDefault();
-      if (ew && state.prefs.view_mode === "scroll" && state.prefs.scroll_style !== "compact") {
-        ew.scrollBy({ top: -180, behavior: "smooth" });
-      } else {
-        window.scrollBy({ top: -220, behavior: "smooth" });
-      }
-    } else if (k === "s") {
-      e.preventDefault();
-      if (ew && state.prefs.view_mode === "scroll" && state.prefs.scroll_style !== "compact") {
-        ew.scrollBy({ top: 180, behavior: "smooth" });
-      } else {
-        window.scrollBy({ top: 220, behavior: "smooth" });
-      }
-    } else if (k === "a") {
-      e.preventDefault();
-      if (ew) ew.scrollBy({ left: -280, behavior: "smooth" });
-      else stepChapter(-1);
-    } else if (k === "d") {
-      e.preventDefault();
-      if (ew) ew.scrollBy({ left: 280, behavior: "smooth" });
-      else stepChapter(1);
-    } else if (k === "q" || e.key === "ArrowLeft") {
-      e.preventDefault();
-      stepChapter(-1);
-    } else if (k === "e" || e.key === "ArrowRight") {
-      e.preventDefault();
-      stepChapter(1);
+      heldKeys.add(k);
+      startGlide();
+      return;
     }
+    if (!isModal && (k === "a" || k === "d")) {
+      e.preventDefault();
+      if (el) { heldKeys.add(k); startGlide(); }
+      else if (!e.repeat) stepChapter(k === "a" ? -1 : 1);
+      return;
+    }
+    if (!isModal && !e.repeat && (k === "q" || e.key === "ArrowLeft")) {
+      e.preventDefault(); stepChapter(-1);
+    } else if (!isModal && !e.repeat && (k === "e" || e.key === "ArrowRight")) {
+      e.preventDefault(); stepChapter(1);
+    }
+  });
+
+  // Dormant Gamepad Support (activates only when a controller connects)
+  let padRaf = null;
+  let lastPadTs = 0;
+  let lastBumpTs = 0;
+  function pollGamepad(now) {
+    const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
+    if (!pads.length) { padRaf = null; return; }
+    const dt = lastPadTs ? Math.min(0.05, (now - lastPadTs) / 1000) : 0.016;
+    lastPadTs = now;
+    const p = pads[0];
+    const ax = Math.abs(p.axes[0] || 0) > 0.2 ? p.axes[0] : 0;
+    const ay = Math.abs(p.axes[1] || 0) > 0.2 ? p.axes[1] : 0;
+    const dx = ax + (p.buttons[15]?.pressed ? 1 : 0) - (p.buttons[14]?.pressed ? 1 : 0);
+    const dy = ay + (p.buttons[13]?.pressed ? 1 : 0) - (p.buttons[12]?.pressed ? 1 : 0);
+    const speed = (state.prefs?.wasd_step || 220) * 3.4 * dt;
+    if (dx !== 0 || dy !== 0) applyGlide(dx * speed * 1.2, dy * speed);
+    if (now - lastBumpTs > 280) {
+      if (p.buttons[4]?.pressed) { stepChapter(-1); lastBumpTs = now; }
+      else if (p.buttons[5]?.pressed) { stepChapter(1); lastBumpTs = now; }
+    }
+    padRaf = requestAnimationFrame(pollGamepad);
+  }
+  window.addEventListener("gamepadconnected", () => {
+    showToast("Controller connected");
+    if (!padRaf) { lastPadTs = 0; padRaf = requestAnimationFrame(pollGamepad); }
   });
 }
 

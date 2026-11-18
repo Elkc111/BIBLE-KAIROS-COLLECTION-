@@ -71,6 +71,7 @@ fn default_font_style() -> String { "editorial".to_string() }
 fn default_line_height() -> String { "balanced".to_string() }
 fn default_color_code() -> bool { true }
 fn default_scroll_style() -> String { "ribbon".to_string() }
+fn default_wasd_step() -> i64 { 220 }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct UserPrefs {
@@ -103,6 +104,8 @@ struct UserPrefs {
     history: Vec<HistoryEntry>,
     #[serde(default)]
     prayers: Vec<PrayerItem>,
+    #[serde(default = "default_wasd_step")]
+    wasd_step: i64,
 }
 
 #[derive(Serialize)]
@@ -293,7 +296,7 @@ fn default_prefs(available: &[TranslationInfo]) -> UserPrefs {
         clean_pilcrow: true, color_code: default_color_code(),
         active_plan: "gospels_psalms".to_string(), completed_days: HashMap::new(),
         pins: vec![], slot_fonts: HashMap::new(), daily_dismissed_date: None,
-        last_pin_folder: default_pin_folder(), history: vec![], prayers: vec![],
+        last_pin_folder: default_pin_folder(), history: vec![], prayers: vec![], wasd_step: default_wasd_step(),
     }
 }
 
@@ -410,9 +413,16 @@ fn search_verses(state: State<AppState>, query: String, translation_code: String
     if q.is_empty() { return Ok(vec![]); }
     let lim = limit.unwrap_or(50).min(150);
 
+    let sanitized: String = q.split_whitespace().map(|w| format!(r#""{}""#, w.replace('"', ""))).collect::<Vec<_>>().join(" ");
+    if translation_code == "ALL" {
+        let mut stmt = vault.prepare("SELECT v.book_id, b.name || ' [' || t.code || ']', v.chapter, v.verse, v.text FROM verses_fts f JOIN verses v ON v.id = f.rowid JOIN translations t ON t.id = v.translation_id JOIN books b ON b.id = v.book_id WHERE f.text MATCH ?1 ORDER BY v.book_id, v.chapter, v.verse, t.id LIMIT ?2").map_err(|e| e.to_string())?;
+        let hits = stmt.query_map((&sanitized, lim), |r| Ok(SearchHit { book_id: r.get(0)?, book_name: r.get(1)?, chapter: r.get(2)?, verse: r.get(3)?, text: r.get(4)? }))
+            .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        return Ok(hits);
+    }
+
     let in_vault: bool = vault.query_row("SELECT EXISTS(SELECT 1 FROM translations WHERE code = ?1)", (&translation_code,), |r| r.get(0)).unwrap_or(false);
     if in_vault {
-        let sanitized: String = q.split_whitespace().map(|w| format!(r#""{}""#, w.replace('"', ""))).collect::<Vec<_>>().join(" ");
         let mut stmt = vault.prepare("SELECT v.book_id, b.name, v.chapter, v.verse, v.text FROM verses_fts f JOIN verses v ON v.id = f.rowid JOIN translations t ON t.id = v.translation_id JOIN books b ON b.id = v.book_id WHERE f.text MATCH ?1 AND t.code = ?2 ORDER BY v.book_id, v.chapter, v.verse LIMIT ?3").map_err(|e| e.to_string())?;
         let hits = stmt.query_map((&sanitized, &translation_code, lim), |r| Ok(SearchHit { book_id: r.get(0)?, book_name: r.get(1)?, chapter: r.get(2)?, verse: r.get(3)?, text: r.get(4)? }))
             .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;

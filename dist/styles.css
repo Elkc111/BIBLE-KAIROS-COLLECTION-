@@ -914,7 +914,8 @@ body.selah-active .row-actions { opacity: 0 !important; pointer-events: none !im
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-.topbar { background: var(--surface) !important; }
+.topbar { background: var(--surface); }
+html[data-theme="wood"] .topbar { background: linear-gradient(180deg, #825a37 0%, #684628 100%) !important; }
 .col-headers { background: var(--bg) !important; }
 
 .notepad-list {
@@ -950,3 +951,27 @@ body.selah-active .row-actions { opacity: 0 !important; pointer-events: none !im
 }
 .notepad-body { display: flex; flex-direction: column; gap: 4px; }
 .notepad-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* === V1.3.3 60FPS SCROLL === */
+.ribbon-cell, .bubble-card, .verse-row { box-shadow: none !important; }
+
+/* === V1.3.4 POLISH === */
+:root, html[data-theme="slate"], html[data-theme="cedar"], html[data-theme="indigo"], html[data-theme="plum"], html[data-theme="crimson"] {
+  color-scheme: dark;
+}
+html[data-theme="parchment"], html[data-theme="wood"], html[data-theme="stone"], html[data-theme="terracotta"] {
+  color-scheme: light;
+}
+.slot-font-box select, .search-scope-sel {
+  background-color: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+.search-scope-sel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--accent) !important;
+  outline: none;
+}
+.bubbles-stage { scroll-snap-type: none !important; }

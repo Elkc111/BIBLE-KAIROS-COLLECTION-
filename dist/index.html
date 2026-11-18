@@ -108,7 +108,7 @@
     <div class="modal-card search-card">
       <div class="search-input-wrap">
         <input id="search-input" type="text" placeholder="Type reference (e.g. Rom 8, Prov 24:16) or search words..." autocomplete="off" />
-        <span id="search-scope" class="search-scope">in BSB</span>
+        <select id="search-scope" class="search-scope-sel"></select>
       </div>
       <div id="search-results" class="search-results"></div>
     </div>
@@ -276,6 +276,10 @@
         <div class="setting-row">
           <span><strong>Text Size</strong> (<strong id="font-size-val">18px</strong>)</span>
           <input id="font-slider" type="range" min="15" max="32" value="18" />
+        </div>
+        <div class="setting-row">
+          <span><strong>WASD Scroll Step</strong> (<strong id="wasd-step-val">220px</strong>)</span>
+          <input id="wasd-slider" type="range" min="80" max="460" step="20" value="220" />
         </div>
 
         <div class="setting-guide">
