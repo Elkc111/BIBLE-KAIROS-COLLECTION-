@@ -849,3 +849,62 @@ html[data-theme="wood"] .verse-row {
   .ribbon-stage { grid-template-columns: 78px; grid-auto-columns: 45vw; max-height: calc(100vh - 125px); }
   .ribbon-rail { width: 78px; padding: 8px; }
 }
+
+/* === V1.3 FINAL POLISH === */
+html[data-theme="crimson"] {
+  --bg: #190e12;
+  --surface: #231419;
+  --surface-2: #2f1b22;
+  --text: #f3ece1;
+  --text-muted: #b89fa6;
+  --accent: #ddb05c;
+  --accent-soft: rgba(221, 176, 92, 0.15);
+  --border: rgba(221, 176, 92, 0.20);
+  --border-subtle: rgba(255, 240, 235, 0.08);
+  --cc-god: #d6a3f0;
+  --cc-person: #8cc0f2;
+  --cc-place: #ebaa7b;
+}
+.sw-crimson { background: linear-gradient(135deg, #2b131b 55%, #ddb05c 55%); }
+
+.topbar .pill, .topbar .version-pill, .topbar .seg-btn { white-space: nowrap; }
+
+.row-actions { opacity: 0.58; transition: opacity 0.15s ease; z-index: 4; }
+.verse-row:hover .row-actions, .stack-card:hover .row-actions, .bubble-card:hover .row-actions, .ribbon-col-head:hover .row-actions, .sheet-verse:hover .row-actions { opacity: 1; }
+.copy-mini { padding: 3px 9px; border-radius: 7px; border: 1px solid var(--border); background: color-mix(in srgb, var(--surface-2) 85%, transparent); }
+
+.ribbon-stage { align-items: stretch; }
+.ribbon-cell { min-height: 78px; padding: 12px 14px 26px; }
+
+.pins-io-bar { display: flex; gap: 8px; padding: 10px 16px 6px; border-bottom: 1px solid var(--border-subtle); }
+.prayer-intro { padding: 10px 18px; font-size: 12.5px; line-height: 1.45; color: var(--accent); background: var(--accent-soft); border-bottom: 1px solid var(--border-subtle); }
+.prayer-compose { padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 8px; }
+#prayer-input { width: 100%; resize: vertical; min-height: 54px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-family: var(--font-sans); font-size: 13px; outline: none; }
+.prayer-compose-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.prayer-attach { font-size: 12px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px; }
+.prayer-answered { text-decoration: line-through; opacity: 0.6; }
+
+.slot-font-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.slot-font-box { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-muted); }
+.slot-font-box select { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 6px; font-size: 12px; }
+
+.selah-link { background: none; border: none; color: var(--accent); font-style: italic; cursor: pointer; padding: 0 2px; text-decoration: underline; text-decoration-style: dotted; }
+body.selah-active .topbar,
+body.selah-active .col-headers,
+body.selah-active .cc-legend,
+body.selah-active .daily-card-wrap,
+body.selah-active .bottom-nav,
+body.selah-active .ew-bar,
+body.selah-active .row-actions { opacity: 0 !important; pointer-events: none !important; transition: opacity 0.35s ease; }
+.selah-pill-exit { position: fixed; bottom: 20px; right: 20px; z-index: 90; opacity: 0.55; font-size: 11.5px; }
+.selah-pill-exit:hover { opacity: 1; }
+
+@media (max-width: 560px) { .slot-font-grid { grid-template-columns: 1fr; } }
+@media (max-height: 480px) and (orientation: landscape) {
+  .cc-legend { display: none !important; }
+  .chapter-banner { margin: 0 0 8px; }
+  .chapter-banner h1 { font-size: 18px; }
+  .chapter-banner .sub { display: none; }
+  .ew-bar { margin: -4px 0 8px; }
+  .ribbon-stage { max-height: calc(100vh - 108px); grid-auto-columns: 44vw; }
+}

@@ -34,6 +34,15 @@ struct BookInfo {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+struct PrayerItem {
+    id: String,
+    text: String,
+    scripture_ref: Option<String>,
+    answered: bool,
+    created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 struct HistoryEntry {
     book_id: i64,
     book_name: String,
@@ -92,6 +101,8 @@ struct UserPrefs {
     last_pin_folder: String,
     #[serde(default)]
     history: Vec<HistoryEntry>,
+    #[serde(default)]
+    prayers: Vec<PrayerItem>,
 }
 
 #[derive(Serialize)]
@@ -603,6 +614,20 @@ fn scan_drop_in(state: State<AppState>) -> Result<(String, Vec<ImportReport>), S
     Ok((drop_dir.display().to_string(), reports))
 }
 
+
+#[tauri::command]
+fn export_text_file(app: AppHandle, state: State<AppState>, filename: String, contents: String) -> Result<String, String> {
+    let dir = app.path().download_dir().unwrap_or_else(|_| state.data_dir.clone());
+    let _ = std::fs::create_dir_all(&dir);
+    let safe_name: String = filename
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    let target = dir.join(safe_name);
+    std::fs::write(&target, contents.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(target.display().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -628,7 +653,8 @@ pub fn run() {
             search_verses,
             save_prefs,
             import_bible_bytes,
-            scan_drop_in
+            scan_drop_in,
+            export_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running Bible: Kairos Collection");

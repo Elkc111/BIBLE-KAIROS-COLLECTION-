@@ -33,6 +33,7 @@
         <button class="seg-btn" data-mode-pick="scroll" title="East-West Scroll">Scroll</button>
       </div>
       <button id="btn-pins" class="pill pill-ghost" title="Saved Verse Pins">Pins</button>
+      <button id="btn-prayer" class="pill pill-ghost" title="Personal Prayer List">Pray</button>
       <button id="btn-plan" class="pill pill-ghost">Plan</button>
       <button id="btn-settings" class="pill pill-ghost">Set</button>
     </div>
@@ -123,6 +124,10 @@
         </div>
         <button class="close-btn" data-close="modal-pins">&times;</button>
       </div>
+      <div class="pins-io-bar">
+        <button id="btn-export-pins" class="pill pill-primary" style="font-size:12px;">Export Pins</button>
+        <label class="pill pill-ghost" style="font-size:12px;display:inline-flex;align-items:center;">Import Pins<input id="inp-import-pins" type="file" accept=".json" style="display:none;" /></label>
+      </div>
       <div id="pins-toolbar" class="pins-toolbar"></div><div id="pins-list" class="plan-days"></div><div id="recent-list" class="plan-days hidden"></div>
     </div>
   </div>
@@ -147,6 +152,30 @@
           <button id="btn-pin-save" class="pill pill-primary">Save Pin (Enter)</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Prayer List Modal -->
+  <div id="modal-prayer" class="modal hidden">
+    <div class="modal-card drawer-card">
+      <div class="modal-head">
+        <h3>Prayer List</h3>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="btn-export-prayers" class="pill pill-ghost" style="font-size:12px;">Export List</button>
+          <button class="close-btn" data-close="modal-prayer">&times;</button>
+        </div>
+      </div>
+      <div class="prayer-intro">
+        Type what you want to ask God for&mdash;be specific. Come back here whenever you need to strengthen your prayer.
+      </div>
+      <div class="prayer-compose">
+        <textarea id="prayer-input" rows="2" placeholder="Write a specific prayer request..."></textarea>
+        <div class="prayer-compose-foot">
+          <label class="prayer-attach"><input id="prayer-attach-ref" type="checkbox" checked /> Attach <span id="prayer-cur-ref">current chapter</span></label>
+          <button id="btn-add-prayer" class="pill pill-primary">Add Prayer</button>
+        </div>
+      </div>
+      <div id="prayer-list" class="plan-days"></div>
     </div>
   </div>
 
@@ -185,6 +214,7 @@
             <button class="theme-chip" data-theme-pick="cedar"><span class="swatch sw-cedar"></span>Cedar Dusk</button>
             <button class="theme-chip" data-theme-pick="indigo"><span class="swatch sw-indigo"></span>Midnight Indigo</button>
             <button class="theme-chip" data-theme-pick="plum"><span class="swatch sw-plum"></span>Velvet Plum</button>
+            <button class="theme-chip" data-theme-pick="crimson"><span class="swatch sw-crimson"></span>Crimson Leather</button>
           </div>
         </div>
 
@@ -219,24 +249,16 @@
           </label>
         </div>
 
-        <div class="setting-row">
-          <div>
-            <strong>Font Style</strong>
-            <small class="inline-sub">Apply one font to all columns, or mix per slot.</small>
-            <div id="font-target-pills" class="segmented" style="margin-top:6px;">
-              <button class="seg-btn active" data-font-target="all">All</button>
-              <button class="seg-btn" data-font-target="0">Slot 1</button>
-              <button class="seg-btn" data-font-target="1">Slot 2</button>
-              <button class="seg-btn" data-font-target="2">Slot 3</button>
-            </div>
-          </div>
-          <div class="segmented" style="flex-wrap:wrap">
+        <div class="setting-block" style="border-top:1px solid var(--border-subtle);">
+          <div class="setting-label">Font Style <small>Match all 3 columns at once, or pick a distinct font per slot below.</small></div>
+          <div class="segmented" style="flex-wrap:wrap;margin-bottom:8px;">
             <button class="seg-btn" data-font-pick="editorial">Editorial</button>
             <button class="seg-btn" data-font-pick="olde">Ye Olde</button>
             <button class="seg-btn" data-font-pick="chancery">Chancery</button>
             <button class="seg-btn" data-font-pick="sans">Sans</button>
             <button class="seg-btn" data-font-pick="mono">Mono</button>
           </div>
+          <div id="slot-font-grid" class="slot-font-grid"></div>
         </div>
 
         <div class="setting-row">
@@ -257,24 +279,24 @@
         </div>
 
         <div class="setting-guide">
-          <strong>Quick Guide &amp; Navigation</strong>
-          <small class="desktop-only"><strong>Keys:</strong> <code>W</code>/<code>S</code> scroll up/down &middot; <code>A</code>/<code>D</code> glide East/West &middot; <code>Q</code>/<code>E</code> or Arrows turn chapters &middot; <code>Ctrl+K</code> search.</small>
-          <small><strong>Lenses:</strong> <em>Word-for-Word</em> sticks closest to Hebrew/Greek phrasing; <em>Balanced</em> blends precision with flow; <em>Thought-for-Thought</em> reads in natural everyday English.</small>
-          <small><strong>East &rarr; West Scroll:</strong> Switch to <em>Bubbles</em> or <em>Scroll</em>, then roll your mouse wheel to glide sideways across the chapter.</small>
-        </div>
-
-        <div class="setting-guide">
-          <strong>Import Bible Module (Offline)</strong>
-          <small>Add standard MyBible (<code>.SQLite3</code>), e-Sword (<code>.bblx</code>), MySword, or <code>.db</code> modules. Kairos checks book/verse counts &amp; previews verses automatically.</small>
+          <strong>Recover Progress (Unified Backup)</strong>
+          <small>Save or restore everything together—Reading Plans, Pins, Prayer List, History, and Themes.</small>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
-            <label class="pill pill-primary" style="display:inline-flex;align-items:center;">Choose File<input id="inp-import-file" type="file" accept=".sqlite3,.sqlite,.bblx,.bbli,.mybible,.db" style="display:none;" /></label>
-            <button id="btn-scan-dropin" class="pill pill-ghost">Scan drop_in/</button>
+            <button id="btn-export-backup" class="pill pill-primary">Export Backup</button>
+            <label class="pill pill-ghost" style="display:inline-flex;align-items:center;">Recover Progress<input id="inp-import-backup" type="file" accept=".json" style="display:none;" /></label>
           </div>
-          <div id="import-status" class="import-status hidden"></div>
+        </div>
+        <div class="setting-guide">
+          <strong>User&rsquo;s Manual</strong>
+          <small>&bull; <strong>Hot-Swap Versions:</strong> Tap any of the 3 top pills to swap translations anytime.</small>
+          <small>&bull; <strong>4 Reading Modes:</strong> <em>Cols</em> (3 synced columns), <em>Stack</em> (vertical cards), <em>Bubbles</em> (swipeable cards), and <em>Scroll</em> (3 East&rarr;West ribbons).</small>
+          <small>&bull; <strong>Unlimited Pins &amp; Share:</strong> Tap <em>Pin</em> (or <code>Shift+Click</code> a range) to save into folders; tap <em>Share</em> to send straight to WhatsApp / Status.</small>
+          <small>&bull; <strong>Prayer List:</strong> Tap <em>Pray</em> to write specific prayers with Scripture anchors.</small>
+          <small class="desktop-only">&bull; <strong>Keyboard:</strong> <code>W/S</code> scroll, <code>A/D</code> glide East/West, <code>Q/E</code> or Arrows turn chapters, <code>Ctrl+K</code> search.</small>
         </div>
         <div class="setting-guide">
           <strong>Open Scripture Licenses &amp; Credits</strong>
-          <small>BSB (CC0 Public Domain) &middot; FBV (CC BY-SA 4.0) &middot; OEB, WEB &amp; KJV (Public Domain).<br><em>Built with Hyares &mdash; Zero ads, offline-first.</em></small>
+          <small>BSB (CC0 Public Domain) &middot; FBV (CC BY-SA 4.0) &middot; OEB, WEB &amp; KJV (Public Domain).<br><em>Built with Hyares &mdash; Zero ads, offline-first.</em> &middot; <button id="btn-selah-mode" class="selah-link" title="Quiet Focus Mode">Selah</button></small>
         </div>
         <div class="setting-footer">
           <button id="btn-show-daily" class="pill pill-ghost">Show Today's Trio</button>
@@ -285,6 +307,7 @@
   </div>
 
   <div id="slot-menu" class="slot-menu hidden"></div>
+  <button id="btn-exit-selah" class="pill pill-ghost selah-pill-exit hidden">Exit Selah</button>
   <div id="toast" class="toast hidden"></div>
 
   <script src="app.js"></script>

@@ -417,10 +417,8 @@ function applyThemeAndTypography() {
     const chosen = sf[String(i)] || fs;
     document.documentElement.style.setProperty(`--slot-font-${i}`, FONT_FAMILIES[chosen] || FONT_FAMILIES.editorial);
   });
-  const activeFontForTarget = state.fontTarget === "all" ? fs : (sf[state.fontTarget] || fs);
-  document.querySelectorAll("[data-font-target]").forEach((b) => {
-    b.classList.toggle("active", b.dataset.fontTarget === state.fontTarget);
-  });
+  const activeFontForTarget = fs;
+  renderSlotFontGrid();
   document.documentElement.style.setProperty("--reader-lh", LINE_HEIGHTS[lh] || LINE_HEIGHTS.balanced);
 
   document.getElementById("font-slider").value = state.prefs.font_size;
@@ -554,8 +552,8 @@ function actionButtonsHtml(verseNum) {
   const pinned = isPinned(state.prefs.book_id, state.prefs.chapter, verseNum);
   return `
     <div class="row-actions">
-      <button class="copy-mini ${pinned ? "pinned" : ""}" data-pin="${verseNum}">${pinned ? "Pinned" : "Pin"}</button>
-      <button class="copy-mini" data-copy="${verseNum}">Copy</button>
+      <button class="copy-mini ${pinned ? "pinned" : ""}" data-pin="${verseNum}" title="Pin verse (unlimited)">${pinned ? "Pin &#10003;" : "Pin"}</button>
+      <button class="copy-mini" data-share="${verseNum}" title="Share or Copy">Share</button>
     </div>
   `;
 }
@@ -668,7 +666,7 @@ function renderReader() {
         state.prefs.slots.forEach((code, slotIdx) => {
           const cell = row.cells[code];
           const txt = cell ? formatScriptureHtml(cell.formatted_text || cell.text) : "—";
-          const foot = slotIdx === state.prefs.slots.length - 1 ? `<span class="ribbon-foot-tag">Verse ${row.verse}</span>` : "";
+          const foot = `<span class="ribbon-foot-tag">Verse ${row.verse}</span>`;
           gridHtml += `<div class="ribbon-cell ${sel}" data-slot="${slotIdx}" data-verse="${row.verse}">${txt}${foot}</div>`;
         });
       });
@@ -712,7 +710,7 @@ function renderReader() {
 
   reader.querySelectorAll("[data-verse]").forEach((el) => {
     el.addEventListener("click", (e) => {
-      if (e.target.dataset.copy || e.target.dataset.pin) return;
+      if (e.target.dataset.share || e.target.dataset.pin) return;
       const v = Number(el.dataset.verse);
       if (e.shiftKey && state.selectedVerse !== null) {
         state.selEnd = v;
@@ -734,10 +732,10 @@ function renderReader() {
     });
   });
 
-  reader.querySelectorAll("[data-copy]").forEach((btn) => {
+  reader.querySelectorAll("[data-share]").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const v = Number(btn.dataset.copy);
+      const v = Number(btn.dataset.share);
       const b = bookById(state.prefs.book_id);
       const startV = isVerseSelected(v) ? Math.min(state.selectedVerse, state.selEnd ?? state.selectedVerse) : v;
       const endV = isVerseSelected(v) ? Math.max(state.selectedVerse, state.selEnd ?? state.selectedVerse) : v;
@@ -927,6 +925,109 @@ function renderRecentList() {
   });
 }
 
+
+function toggleSelah(on) {
+  document.body.classList.toggle("selah-active", on);
+  document.getElementById("btn-exit-selah").classList.toggle("hidden", !on);
+}
+
+function renderSlotFontGrid() {
+  const grid = document.getElementById("slot-font-grid");
+  if (!grid || !state.prefs) return;
+  const sf = state.prefs.slot_fonts || {};
+  const opts = [
+    ["", "Match All"],
+    ["editorial", "Editorial Serif"],
+    ["olde", "Ye Olde"],
+    ["chancery", "Chancery"],
+    ["sans", "Modern Sans"],
+    ["mono", "Monospace"],
+  ];
+  grid.innerHTML = state.prefs.slots.map((code, i) => {
+    const cur = sf[String(i)] || "";
+    const optHtml = opts.map(([val, lbl]) => `<option value="${val}" ${val === cur ? "selected" : ""}>${lbl}</option>`).join("");
+    return `<div class="slot-font-box"><span>Slot ${i + 1} (<strong>${escapeHtml(code)}</strong>)</span><select data-slot-font="${i}">${optHtml}</select></div>`;
+  }).join("");
+
+  grid.querySelectorAll("[data-slot-font]").forEach((sel) => {
+    sel.onchange = async () => {
+      if (!state.prefs.slot_fonts) state.prefs.slot_fonts = {};
+      if (!sel.value) delete state.prefs.slot_fonts[sel.dataset.slotFont];
+      else state.prefs.slot_fonts[sel.dataset.slotFont] = sel.value;
+      applyThemeAndTypography();
+      await persistPrefs();
+    };
+  });
+}
+
+async function exportFileOrShare(filename, textContent) {
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: filename, text: textContent });
+      return;
+    } catch (_) {}
+  }
+  try {
+    await invoke("export_text_file", { filename, contents: textContent });
+    showToast(`Saved ${filename} to Downloads`);
+  } catch (_) {
+    await navigator.clipboard.writeText(textContent);
+    showToast(`Copied ${filename} to clipboard`);
+  }
+}
+
+function renderPrayerModal() {
+  const b = bookById(state.prefs.book_id);
+  const curRef = `${b.name} ${state.prefs.chapter}${state.selectedVerse ? ":" + state.selectedVerse : ""}`;
+  document.getElementById("prayer-cur-ref").textContent = curRef;
+
+  const list = document.getElementById("prayer-list");
+  const prayers = state.prefs.prayers || [];
+  if (!prayers.length) {
+    list.innerHTML = `<div class="plan-day"><span style="color:var(--text-muted)">Your prayer list is empty. Write something specific above.</span></div>`;
+    return;
+  }
+  list.innerHTML = prayers.map((pr, idx) => `
+    <div class="plan-day">
+      <div class="plan-day-left" style="flex-direction:column;align-items:flex-start;gap:4px;">
+        <div style="display:flex;align-items:center;gap:8px;width:100%;">
+          <input type="checkbox" data-pray-done="${idx}" ${pr.answered ? "checked" : ""} />
+          <span class="${pr.answered ? "prayer-answered" : ""}" style="white-space:pre-wrap;">${escapeHtml(pr.text)}</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;padding-left:26px;">
+          <small style="color:var(--text-muted);font-size:11px;">${escapeHtml(pr.created_at)}</small>
+          ${pr.scripture_ref ? `<button class="pin-pill active" data-pray-jump="${escapeHtml(pr.scripture_ref)}">${escapeHtml(pr.scripture_ref)}</button>` : ""}
+        </div>
+      </div>
+      <button class="pill pill-ghost" data-pray-del="${idx}">&times;</button>
+    </div>
+  `).join("");
+
+  list.querySelectorAll("[data-pray-done]").forEach((chk) => {
+    chk.onchange = async () => {
+      state.prefs.prayers[Number(chk.dataset.prayDone)].answered = chk.checked;
+      await persistPrefs();
+      renderPrayerModal();
+    };
+  });
+  list.querySelectorAll("[data-pray-del]").forEach((btn) => {
+    btn.onclick = async () => {
+      state.prefs.prayers.splice(Number(btn.dataset.prayDel), 1);
+      await persistPrefs();
+      renderPrayerModal();
+    };
+  });
+  list.querySelectorAll("[data-pray-jump]").forEach((btn) => {
+    btn.onclick = () => {
+      const ref = tryParseRef(btn.dataset.prayJump);
+      if (ref) {
+        closeAllModals();
+        loadChapter(ref.book.id, ref.chapter, ref.verse);
+      }
+    };
+  });
+}
+
 function renderPinsModal() {
   const isPins = state.pinsTab !== "recent";
   document.getElementById("tab-pins-view").classList.toggle("active", isPins);
@@ -1035,6 +1136,12 @@ async function handleSearchInput() {
   }
 
   let html = "";
+  const qLow = val.trim().toLowerCase();
+  if (qLow === "selah") {
+    html += `<div class="search-hit" id="hit-enter-selah"><div class="search-hit-ref">Selah &mdash; Quiet Focus Mode</div><div class="search-hit-txt">Tap to fade out all menus and pause calmly in the Word.</div></div>`;
+  } else if (qLow === "kairos" || qLow === "stones") {
+    html += `<div class="search-hit" style="cursor:default;"><div class="search-hit-ref">Luke 19:40 &mdash; Even the stones will cry out</div><div class="search-hit-txt">Built with Hyares for Kaslorin &middot; Bible: Kairos Collection</div></div>`;
+  }
   const ref = tryParseRef(val);
   if (ref) {
     html += `
@@ -1056,6 +1163,8 @@ async function handleSearchInput() {
     .join("");
 
   res.innerHTML = html || `<div class="search-hit"><div class="search-hit-txt">No matches found.</div></div>`;
+  const selahHit = res.querySelector("#hit-enter-selah");
+  if (selahHit) selahHit.onclick = () => { closeAllModals(); toggleSelah(true); };
   res.querySelectorAll("[data-jump-book]").forEach((el) => {
     el.onclick = () => {
       document.getElementById("modal-search").classList.add("hidden");
@@ -1349,6 +1458,104 @@ async function init() {
     }
   };
 
+
+  document.getElementById("btn-selah-mode").onclick = () => {
+    closeAllModals();
+    toggleSelah(true);
+  };
+  document.getElementById("btn-exit-selah").onclick = () => toggleSelah(false);
+
+  document.getElementById("btn-prayer").onclick = () => {
+    renderPrayerModal();
+    openModal("modal-prayer");
+  };
+  document.getElementById("btn-add-prayer").onclick = async () => {
+    const inp = document.getElementById("prayer-input");
+    const txt = inp.value.trim();
+    if (!txt) return;
+    const attach = document.getElementById("prayer-attach-ref").checked;
+    const ref = attach ? document.getElementById("prayer-cur-ref").textContent : null;
+    if (!state.prefs.prayers) state.prefs.prayers = [];
+    state.prefs.prayers.unshift({
+      id: String(Date.now()),
+      text: txt,
+      scripture_ref: ref,
+      answered: false,
+      created_at: localDateKey(),
+    });
+    inp.value = "";
+    await persistPrefs();
+    renderPrayerModal();
+    showToast("Prayer added");
+  };
+  document.getElementById("btn-export-prayers").onclick = async () => {
+    const prayers = state.prefs.prayers || [];
+    if (!prayers.length) { showToast("Prayer list is empty"); return; }
+    const lines = prayers.map((p) => {
+      const box = p.answered ? "[Answered]" : "[Praying]";
+      const ref = p.scripture_ref ? ` (${p.scripture_ref})` : "";
+      return `${box} ${p.created_at}${ref}\n${p.text}`;
+    }).join("\n\n");
+    await exportFileOrShare("kairos-prayer-list.txt", `KAIROS PRAYER LIST\n\n${lines}`);
+  };
+
+  document.getElementById("btn-export-pins").onclick = async () => {
+    const pins = state.prefs.pins || [];
+    const sub = state.pinFilter === "All" ? pins : pins.filter((p) => (p.folder || "General") === state.pinFilter);
+    if (!sub.length) { showToast("No pins to export"); return; }
+    const payload = JSON.stringify({ kairos_pins: 1, folder_filter: state.pinFilter, pins: sub }, null, 2);
+    await exportFileOrShare(`kairos-pins-${state.pinFilter.toLowerCase()}.json`, payload);
+  };
+  document.getElementById("inp-import-pins").onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const obj = JSON.parse(await file.text());
+      const incoming = Array.isArray(obj.pins) ? obj.pins : [];
+      if (!state.prefs.pins) state.prefs.pins = [];
+      let added = 0;
+      incoming.forEach((np) => {
+        const dup = state.prefs.pins.some((x) =>
+          x.book_id === np.book_id && x.chapter === np.chapter && x.verse === np.verse && (x.end_verse || null) === (np.end_verse || null) && (x.folder || "General") === (np.folder || "General")
+        );
+        if (!dup && np.book_id && np.chapter && np.verse) {
+          state.prefs.pins.push(np);
+          if (np.folder && !state.customFolders.includes(np.folder)) state.customFolders.push(np.folder);
+          added++;
+        }
+      });
+      await persistPrefs();
+      applyThemeAndTypography();
+      renderPinsModal();
+      renderReader();
+      showToast(`Imported ${added} pin(s)!`);
+    } catch (_) {
+      showToast("Invalid pins file");
+    }
+    e.target.value = "";
+  };
+
+  document.getElementById("btn-export-backup").onclick = async () => {
+    const payload = JSON.stringify({ kairos_backup: 1, prefs: state.prefs }, null, 2);
+    await exportFileOrShare(`kairos-backup-${localDateKey()}.json`, payload);
+  };
+  document.getElementById("inp-import-backup").onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const obj = JSON.parse(await file.text());
+      if (!obj.prefs || !Array.isArray(obj.prefs.slots)) throw new Error("bad");
+      state.prefs = obj.prefs;
+      await persistPrefs();
+      applyThemeAndTypography();
+      await loadChapter(state.prefs.book_id, state.prefs.chapter);
+      showToast("Progress recovered!");
+    } catch (_) {
+      showToast("Invalid backup file");
+    }
+    e.target.value = "";
+  };
+
   document.getElementById("btn-settings").onclick = () => {
     openModal("modal-settings");
   };
@@ -1367,21 +1574,10 @@ async function init() {
       await persistPrefs();
     };
   });
-  document.querySelectorAll("[data-font-target]").forEach((btn) => {
-    btn.onclick = () => {
-      state.fontTarget = btn.dataset.fontTarget;
-      applyThemeAndTypography();
-    };
-  });
   document.querySelectorAll("[data-font-pick]").forEach((btn) => {
     btn.onclick = async () => {
-      if (!state.prefs.slot_fonts) state.prefs.slot_fonts = {};
-      if (state.fontTarget === "all") {
-        state.prefs.font_style = btn.dataset.fontPick;
-        state.prefs.slot_fonts = {};
-      } else {
-        state.prefs.slot_fonts[state.fontTarget] = btn.dataset.fontPick;
-      }
+      state.prefs.font_style = btn.dataset.fontPick;
+      state.prefs.slot_fonts = {};
       applyThemeAndTypography();
       await persistPrefs();
     };
@@ -1434,6 +1630,7 @@ async function init() {
       return;
     }
     if (e.key === "Escape") {
+      if (document.body.classList.contains("selah-active")) { toggleSelah(false); return; }
       closeAllModals();
       return;
     }
