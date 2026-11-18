@@ -185,15 +185,19 @@ function sliceBookOrder(bookIds, totalDays) {
   return days;
 }
 
+let _cachedPlans = null;
 function getPlans() {
+  if (_cachedPlans && state.books.length) return _cachedPlans;
   const allIds = state.books.map((b) => b.id);
   const ntIds = state.books.filter((b) => b.testament === "NT").map((b) => b.id);
-  return {
+  const out = {
     ...PLANS,
     nt_90: { name: "New Testament Complete (90-Day)", days: sliceBookOrder(ntIds, 90) },
     bible_365: { name: "Whole Bible in a Year (365-Day)", days: sliceBookOrder(allIds, 365) },
     chrono_365: { name: "Chronological Bible (365-Day)", days: sliceBookOrder(CHRONO_ORDER, 365) },
   };
+  if (state.books.length) _cachedPlans = out;
+  return out;
 }
 
 let state = {
@@ -979,27 +983,31 @@ async function exportFileOrShare(filename, textContent) {
 function renderPrayerModal() {
   const b = bookById(state.prefs.book_id);
   const curRef = `${b.name} ${state.prefs.chapter}${state.selectedVerse ? ":" + state.selectedVerse : ""}`;
-  document.getElementById("prayer-cur-ref").textContent = curRef;
+  const refEl = document.getElementById("prayer-cur-ref");
+  if (refEl) refEl.textContent = curRef;
 
   const list = document.getElementById("prayer-list");
+  if (!list) return;
   const prayers = state.prefs.prayers || [];
+  const inp = document.getElementById("prayer-input");
+  if (inp) inp.placeholder = `Prayer #${prayers.length + 1} — write a specific request...`;
+
   if (!prayers.length) {
-    list.innerHTML = `<div class="plan-day"><span style="color:var(--text-muted)">Your prayer list is empty. Write something specific above.</span></div>`;
+    list.innerHTML = `<div class="notepad-row"><span class="notepad-num">1.</span><span></span><span style="color:var(--text-muted)">Your prayer notepad is blank. Write #1 above.</span><span></span></div>`;
     return;
   }
   list.innerHTML = prayers.map((pr, idx) => `
-    <div class="plan-day">
-      <div class="plan-day-left" style="flex-direction:column;align-items:flex-start;gap:4px;">
-        <div style="display:flex;align-items:center;gap:8px;width:100%;">
-          <input type="checkbox" data-pray-done="${idx}" ${pr.answered ? "checked" : ""} />
-          <span class="${pr.answered ? "prayer-answered" : ""}" style="white-space:pre-wrap;">${escapeHtml(pr.text)}</span>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;padding-left:26px;">
+    <div class="notepad-row">
+      <span class="notepad-num">${idx + 1}.</span>
+      <input type="checkbox" data-pray-done="${idx}" ${pr.answered ? "checked" : ""} title="Mark answered" />
+      <div class="notepad-body">
+        <span class="${pr.answered ? "prayer-answered" : ""}" style="white-space:pre-wrap;">${escapeHtml(pr.text)}</span>
+        <div class="notepad-meta">
           <small style="color:var(--text-muted);font-size:11px;">${escapeHtml(pr.created_at)}</small>
           ${pr.scripture_ref ? `<button class="pin-pill active" data-pray-jump="${escapeHtml(pr.scripture_ref)}">${escapeHtml(pr.scripture_ref)}</button>` : ""}
         </div>
       </div>
-      <button class="pill pill-ghost" data-pray-del="${idx}">&times;</button>
+      <button class="pill pill-ghost" data-pray-del="${idx}" title="Delete">&times;</button>
     </div>
   `).join("");
 
@@ -1020,10 +1028,7 @@ function renderPrayerModal() {
   list.querySelectorAll("[data-pray-jump]").forEach((btn) => {
     btn.onclick = () => {
       const ref = tryParseRef(btn.dataset.prayJump);
-      if (ref) {
-        closeAllModals();
-        loadChapter(ref.book.id, ref.chapter, ref.verse);
-      }
+      if (ref) { closeAllModals(); loadChapter(ref.book.id, ref.chapter, ref.verse); }
     };
   });
 }
@@ -1420,7 +1425,7 @@ async function init() {
       `<em>John 3:16:</em> ${escapeHtml(rep.john3_16.slice(0, 90))}`;
   };
 
-  document.getElementById("inp-import-file").onchange = async (e) => {
+  if (document.getElementById("inp-import-file")) document.getElementById("inp-import-file").onchange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const box = document.getElementById("import-status");
@@ -1439,7 +1444,7 @@ async function init() {
     e.target.value = "";
   };
 
-  document.getElementById("btn-scan-dropin").onclick = async () => {
+  if (document.getElementById("btn-scan-dropin")) document.getElementById("btn-scan-dropin").onclick = async () => {
     const box = document.getElementById("import-status");
     box.classList.remove("hidden");
     box.textContent = "Scanning drop_in folder...";
@@ -1476,7 +1481,7 @@ async function init() {
     const attach = document.getElementById("prayer-attach-ref").checked;
     const ref = attach ? document.getElementById("prayer-cur-ref").textContent : null;
     if (!state.prefs.prayers) state.prefs.prayers = [];
-    state.prefs.prayers.unshift({
+    state.prefs.prayers.push({
       id: String(Date.now()),
       text: txt,
       scripture_ref: ref,
@@ -1491,10 +1496,10 @@ async function init() {
   document.getElementById("btn-export-prayers").onclick = async () => {
     const prayers = state.prefs.prayers || [];
     if (!prayers.length) { showToast("Prayer list is empty"); return; }
-    const lines = prayers.map((p) => {
+    const lines = prayers.map((p, idx) => {
       const box = p.answered ? "[Answered]" : "[Praying]";
       const ref = p.scripture_ref ? ` (${p.scripture_ref})` : "";
-      return `${box} ${p.created_at}${ref}\n${p.text}`;
+      return `${idx + 1}. ${box} ${p.created_at}${ref}\n   ${p.text}`;
     }).join("\n\n");
     await exportFileOrShare("kairos-prayer-list.txt", `KAIROS PRAYER LIST\n\n${lines}`);
   };

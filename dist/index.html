@@ -159,7 +159,7 @@
   <div id="modal-prayer" class="modal hidden">
     <div class="modal-card drawer-card">
       <div class="modal-head">
-        <h3>Prayer List</h3>
+        <h3>Prayer Notepad</h3>
         <div style="display:flex;gap:8px;align-items:center;">
           <button id="btn-export-prayers" class="pill pill-ghost" style="font-size:12px;">Export List</button>
           <button class="close-btn" data-close="modal-prayer">&times;</button>
@@ -175,7 +175,7 @@
           <button id="btn-add-prayer" class="pill pill-primary">Add Prayer</button>
         </div>
       </div>
-      <div id="prayer-list" class="plan-days"></div>
+      <div id="prayer-list" class="notepad-list"></div>
     </div>
   </div>
 
@@ -293,6 +293,15 @@
           <small>&bull; <strong>Unlimited Pins &amp; Share:</strong> Tap <em>Pin</em> (or <code>Shift+Click</code> a range) to save into folders; tap <em>Share</em> to send straight to WhatsApp / Status.</small>
           <small>&bull; <strong>Prayer List:</strong> Tap <em>Pray</em> to write specific prayers with Scripture anchors.</small>
           <small class="desktop-only">&bull; <strong>Keyboard:</strong> <code>W/S</code> scroll, <code>A/D</code> glide East/West, <code>Q/E</code> or Arrows turn chapters, <code>Ctrl+K</code> search.</small>
+        </div>
+        <div class="setting-guide">
+          <strong>Import Bible Module (Offline)</strong>
+          <small>Add standard MyBible (<code>.SQLite3</code>), e-Sword (<code>.bblx</code>), MySword, or <code>.db</code> modules. Kairos checks book/verse counts &amp; previews verses automatically.</small>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+            <label class="pill pill-primary" style="display:inline-flex;align-items:center;">Choose File<input id="inp-import-file" type="file" accept=".sqlite3,.sqlite,.bblx,.bbli,.mybible,.db" style="display:none;" /></label>
+            <button id="btn-scan-dropin" class="pill pill-ghost">Scan drop_in/</button>
+          </div>
+          <div id="import-status" class="import-status hidden"></div>
         </div>
         <div class="setting-guide">
           <strong>Open Scripture Licenses &amp; Credits</strong>

@@ -908,3 +908,45 @@ body.selah-active .row-actions { opacity: 0 !important; pointer-events: none !im
   .ew-bar { margin: -4px 0 8px; }
   .ribbon-stage { max-height: calc(100vh - 108px); grid-auto-columns: 44vw; }
 }
+
+/* === V1.3.1 PERF & NOTEPAD === */
+.topbar, .col-headers, .modal {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.topbar { background: var(--surface) !important; }
+.col-headers { background: var(--bg) !important; }
+
+.notepad-list {
+  overflow-y: auto;
+  max-height: 400px;
+  padding: 6px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.notepad-row {
+  display: grid;
+  grid-template-columns: 32px 22px 1fr auto;
+  align-items: start;
+  gap: 8px;
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.notepad-num {
+  font-weight: 700;
+  color: var(--accent);
+  text-align: right;
+  padding-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.notepad-row input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px; height: 15px;
+  margin-top: 3px;
+  cursor: pointer;
+}
+.notepad-body { display: flex; flex-direction: column; gap: 4px; }
+.notepad-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
