@@ -204,7 +204,7 @@ fn prepare_db_paths(data_dir: &Path, resource_dir: Option<&Path>) -> (PathBuf, P
 
     let unpacked = data_dir.join("bible_vault.db");
     if !unpacked.exists() {
-        let mut done = false;
+        let mut _done = false;
         #[cfg(not(target_os = "android"))]
         if let Some(res_dir) = resource_dir {
             for gz in [res_dir.join("resources/bible_vault.db.gz"), res_dir.join("bible_vault.db.gz")] {
@@ -215,7 +215,7 @@ fn prepare_db_paths(data_dir: &Path, resource_dir: Option<&Path>) -> (PathBuf, P
                         if let Ok(mut out) = std::fs::File::create(&tmp) {
                             if io::copy(&mut dec, &mut out).is_ok() {
                                 let _ = std::fs::rename(&tmp, &unpacked);
-                                done = true;
+                                _done = true;
                                 break;
                             }
                         }
@@ -224,7 +224,7 @@ fn prepare_db_paths(data_dir: &Path, resource_dir: Option<&Path>) -> (PathBuf, P
             }
         }
         #[cfg(any(target_os = "android", target_os = "windows"))]
-        if !done {
+        if !_done {
             let mut dec = GzDecoder::new(&EMBEDDED_VAULT_GZ[..]);
             let tmp = data_dir.join("bible_vault.tmp");
             if let Ok(mut out) = std::fs::File::create(&tmp) {
@@ -293,7 +293,7 @@ fn default_prefs(available: &[TranslationInfo]) -> UserPrefs {
         clean_pilcrow: true, color_code: default_color_code(),
         active_plan: "gospels_psalms".to_string(), completed_days: HashMap::new(),
         pins: vec![], slot_fonts: HashMap::new(), daily_dismissed_date: None,
-        last_pin_folder: default_pin_folder(), history: vec![],
+        last_pin_folder: default_pin_folder(), history: vec![], prayers: vec![],
     }
 }
 
