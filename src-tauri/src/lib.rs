@@ -9,9 +9,12 @@ use tauri::{AppHandle, Manager, State};
 
 #[cfg(any(target_os = "android", target_os = "windows"))]
 const EMBEDDED_VAULT_GZ: &[u8] = include_bytes!("../resources/bible_vault.db.gz");
+#[cfg(any(target_os = "android", target_os = "windows"))]
+const EMBEDDED_STUDY_GZ: &[u8] = include_bytes!("../resources/study_vault.db.gz");
 
 struct AppState {
     vault: Mutex<Option<Connection>>,
+    study: Mutex<Option<Connection>>,
     custom: Mutex<Option<Connection>>,
     prefs: Mutex<Option<Connection>>,
     data_dir: PathBuf,
@@ -71,6 +74,7 @@ fn default_font_style() -> String { "editorial".to_string() }
 fn default_line_height() -> String { "balanced".to_string() }
 fn default_color_code() -> bool { true }
 fn default_scroll_style() -> String { "ribbon".to_string() }
+fn default_color_strands() -> bool { true }
 fn default_wasd_step() -> i64 { 220 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -106,6 +110,8 @@ struct UserPrefs {
     prayers: Vec<PrayerItem>,
     #[serde(default = "default_wasd_step")]
     wasd_step: i64,
+    #[serde(default = "default_color_strands")]
+    color_strands: bool,
 }
 
 #[derive(Serialize)]
@@ -273,6 +279,47 @@ async fn ensure_ready(state: State<'_, AppState>) -> Result<bool, String> {
         .map_err(|e| e.to_string())?;
 
     *state.vault.lock().map_err(|e| e.to_string())? = Some(v_conn);
+    let study_unpacked = state.data_dir.join("study_vault.db");
+    let mut study_path = PathBuf::from("/home/kaslorin/Desktop/Letah stuff/BIBLE/study_vault.db");
+    if !study_path.exists() {
+        if !study_unpacked.exists() {
+            let mut sdone = false;
+            #[cfg(not(target_os = "android"))]
+            if let Some(res_dir) = state.resource_dir.as_deref() {
+                for gz in [res_dir.join("resources/study_vault.db.gz"), res_dir.join("study_vault.db.gz")] {
+                    if gz.exists() {
+                        if let Ok(f) = std::fs::File::open(&gz) {
+                            let mut dec = GzDecoder::new(f);
+                            let tmp = state.data_dir.join("study_vault.tmp");
+                            if let Ok(mut out) = std::fs::File::create(&tmp) {
+                                if io::copy(&mut dec, &mut out).is_ok() {
+                                    let _ = std::fs::rename(&tmp, &study_unpacked);
+                                    sdone = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            #[cfg(any(target_os = "android", target_os = "windows"))]
+            if !sdone {
+                let mut dec = GzDecoder::new(&EMBEDDED_STUDY_GZ[..]);
+                let tmp = state.data_dir.join("study_vault.tmp");
+                if let Ok(mut out) = std::fs::File::create(&tmp) {
+                    if io::copy(&mut dec, &mut out).is_ok() {
+                        let _ = std::fs::rename(&tmp, &study_unpacked);
+                    }
+                }
+            }
+        }
+        study_path = study_unpacked;
+    }
+    if study_path.exists() {
+        if let Ok(sc) = Connection::open_with_flags(&study_path, OpenFlags::SQLITE_OPEN_READ_ONLY) {
+            *state.study.lock().map_err(|e| e.to_string())? = Some(sc);
+        }
+    }
     *state.custom.lock().map_err(|e| e.to_string())? = Some(c_conn);
     *state.prefs.lock().map_err(|e| e.to_string())? = Some(p_conn);
     Ok(true)
@@ -294,7 +341,7 @@ fn default_prefs(available: &[TranslationInfo]) -> UserPrefs {
         scroll_style: default_scroll_style(), theme: "wood".to_string(),
         font_size: 18, font_style: default_font_style(), line_height: default_line_height(),
         clean_pilcrow: true, color_code: default_color_code(),
-        active_plan: "gospels_psalms".to_string(), completed_days: HashMap::new(),
+        active_plan: "gospels_psalms".to_string(), color_strands: true, completed_days: HashMap::new(),
         pins: vec![], slot_fonts: HashMap::new(), daily_dismissed_date: None,
         last_pin_folder: default_pin_folder(), history: vec![], prayers: vec![], wasd_step: default_wasd_step(),
     }
@@ -638,6 +685,89 @@ fn export_text_file(app: AppHandle, state: State<AppState>, filename: String, co
     Ok(target.display().to_string())
 }
 
+
+#[derive(Serialize)]
+struct XrefHit { to_b: i64, to_c: i64, to_vs: i64, to_ve: i64, to_book_name: String, votes: i64, previews: HashMap<String, String> }
+
+#[derive(Serialize)]
+struct VerseWordItem { pos: i64, word_orig: String, translit: String, gloss: String, strong_id: String, meaning: String }
+
+#[derive(Serialize)]
+struct StudyPayload { available: bool, xrefs: Vec<XrefHit>, words: Vec<VerseWordItem> }
+
+#[tauri::command]
+async fn get_verse_study(state: State<'_, AppState>, book_id: i64, chapter: i64, verse: i64, translations: Vec<String>, min_votes: i64) -> Result<StudyPayload, String> {
+    let s_guard = state.study.lock().map_err(|e| e.to_string())?;
+    let Some(study) = s_guard.as_ref() else {
+        return Ok(StudyPayload { available: false, xrefs: vec![], words: vec![] });
+    };
+    let v_guard = state.vault.lock().map_err(|e| e.to_string())?;
+    let c_guard = state.custom.lock().map_err(|e| e.to_string())?;
+    let vault = v_guard.as_ref().ok_or("Vault not initialized")?;
+    let custom = c_guard.as_ref().ok_or("Custom vault not initialized")?;
+
+    let books_map: HashMap<i64, String> = vault.prepare_cached("SELECT id, name FROM books").map_err(|e| e.to_string())?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?
+        .collect::<Result<HashMap<_, _>, _>>().map_err(|e| e.to_string())?;
+
+    let mut x_stmt = study.prepare_cached("SELECT to_b, to_c, to_v_start, to_v_end, votes FROM xrefs WHERE from_b = ?1 AND from_c = ?2 AND from_v = ?3 AND votes >= ?4 ORDER BY votes DESC LIMIT 45").map_err(|e| e.to_string())?;
+    let raw_xrefs: Vec<(i64, i64, i64, i64, i64)> = x_stmt.query_map((book_id, chapter, verse, min_votes), |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    let prev_sql = "SELECT v.text FROM verses v JOIN translations t ON t.id = v.translation_id WHERE v.book_id = ?1 AND v.chapter = ?2 AND v.verse = ?3 AND t.code = ?4";
+    let mut v_prev = vault.prepare_cached(prev_sql).map_err(|e| e.to_string())?;
+    let mut c_prev = custom.prepare_cached(prev_sql).map_err(|e| e.to_string())?;
+
+    let mut xrefs = Vec::with_capacity(raw_xrefs.len());
+    for (tb, tc, tvs, tve, votes) in raw_xrefs {
+        let mut previews = HashMap::new();
+        for code in &translations {
+            if let Ok(txt) = v_prev.query_row((tb, tc, tvs, code), |r| r.get::<_, String>(0)) { previews.insert(code.clone(), txt); }
+            else if let Ok(txt) = c_prev.query_row((tb, tc, tvs, code), |r| r.get::<_, String>(0)) { previews.insert(code.clone(), txt); }
+        }
+        xrefs.push(XrefHit { to_b: tb, to_c: tc, to_vs: tvs, to_ve: tve, to_book_name: books_map.get(&tb).cloned().unwrap_or_default(), votes, previews });
+    }
+
+    let mut w_stmt = study.prepare_cached("SELECT w.pos, w.word_orig, w.translit, w.gloss, w.strong_id, COALESCE(l.meaning, w.gloss) FROM verse_words w LEFT JOIN lexicon l ON l.strong_id = w.strong_id WHERE w.book_id = ?1 AND w.chapter = ?2 AND w.verse = ?3 ORDER BY w.pos ASC").map_err(|e| e.to_string())?;
+    let words: Vec<VerseWordItem> = w_stmt.query_map((book_id, chapter, verse), |r| Ok(VerseWordItem { pos: r.get(0)?, word_orig: r.get(1)?, translit: r.get(2)?, gloss: r.get(3)?, strong_id: r.get(4)?, meaning: r.get(5)? })).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    Ok(StudyPayload { available: true, xrefs, words })
+}
+
+#[tauri::command]
+async fn get_strongs_occurrences(state: State<'_, AppState>, strong_id: String, translation_code: String, limit: Option<i64>) -> Result<Vec<SearchHit>, String> {
+    let s_guard = state.study.lock().map_err(|e| e.to_string())?;
+    let Some(study) = s_guard.as_ref() else { return Ok(vec![]); };
+    let v_guard = state.vault.lock().map_err(|e| e.to_string())?;
+    let c_guard = state.custom.lock().map_err(|e| e.to_string())?;
+    let vault = v_guard.as_ref().ok_or("Vault not initialized")?;
+    let custom = c_guard.as_ref().ok_or("Custom vault not initialized")?;
+    let lim = limit.unwrap_or(35).min(80);
+
+    let books_map: HashMap<i64, String> = vault.prepare_cached("SELECT id, name FROM books").map_err(|e| e.to_string())?.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.collect::<Result<HashMap<_, _>, _>>().map_err(|e| e.to_string())?;
+    let mut st = study.prepare_cached("SELECT DISTINCT book_id, chapter, verse FROM verse_words WHERE strong_id = ?1 ORDER BY book_id, chapter, verse LIMIT ?2").map_err(|e| e.to_string())?;
+    let refs: Vec<(i64, i64, i64)> = st.query_map((&strong_id, lim), |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    let sql = "SELECT v.text FROM verses v JOIN translations t ON t.id = v.translation_id WHERE v.book_id = ?1 AND v.chapter = ?2 AND v.verse = ?3 AND t.code = ?4";
+    let mut v_st = vault.prepare_cached(sql).map_err(|e| e.to_string())?;
+    let mut c_st = custom.prepare_cached(sql).map_err(|e| e.to_string())?;
+    let mut hits = Vec::with_capacity(refs.len());
+    for (b, c, v) in refs {
+        let txt = v_st.query_row((b, c, v, &translation_code), |r| r.get::<_, String>(0)).or_else(|_| c_st.query_row((b, c, v, &translation_code), |r| r.get::<_, String>(0))).unwrap_or_default();
+        hits.push(SearchHit { book_id: b, book_name: books_map.get(&b).cloned().unwrap_or_default(), chapter: c, verse: v, text: txt });
+    }
+    Ok(hits)
+}
+
+#[tauri::command]
+fn export_binary_file(app: AppHandle, state: State<AppState>, filename: String, bytes: Vec<u8>) -> Result<String, String> {
+    let dir = app.path().download_dir().unwrap_or_else(|_| state.data_dir.clone());
+    let _ = std::fs::create_dir_all(&dir);
+    let safe_name: String = filename.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' }).collect();
+    let target = dir.join(safe_name);
+    std::fs::write(&target, &bytes).map_err(|e| e.to_string())?;
+    Ok(target.display().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -646,6 +776,7 @@ pub fn run() {
             let resource_dir = app.path().resource_dir().ok();
             app.manage(AppState {
                 vault: Mutex::new(None),
+                study: Mutex::new(None),
                 custom: Mutex::new(None),
                 prefs: Mutex::new(None),
                 data_dir,
@@ -664,7 +795,10 @@ pub fn run() {
             save_prefs,
             import_bible_bytes,
             scan_drop_in,
-            export_text_file
+            export_text_file,
+            get_verse_study,
+            get_strongs_occurrences,
+            export_binary_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running Bible: Kairos Collection");

@@ -3,3 +3,4 @@ src-tauri/target/
 src-tauri/gen/
 *.tmp
 src-tauri/resources/bible_vault.db.gz
+src-tauri/resources/study_vault.db.gz

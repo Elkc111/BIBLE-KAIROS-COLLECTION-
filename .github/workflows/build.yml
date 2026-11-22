@@ -10,9 +10,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble bible vault
+      - name: Reassemble vaults
         shell: bash
-        run: cat src-tauri/resources/vault_part_* > src-tauri/resources/bible_vault.db.gz
+        run: |
+          cat src-tauri/resources/vault_part_* > src-tauri/resources/bible_vault.db.gz
+          cat src-tauri/resources/study_part_* > src-tauri/resources/study_vault.db.gz
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -30,8 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reassemble bible vault
-        run: cat src-tauri/resources/vault_part_* > src-tauri/resources/bible_vault.db.gz
+      - name: Reassemble vaults
+        run: |
+          cat src-tauri/resources/vault_part_* > src-tauri/resources/bible_vault.db.gz
+          cat src-tauri/resources/study_part_* > src-tauri/resources/study_vault.db.gz
       - uses: actions/setup-node@v4
         with:
           node-version: 20

@@ -35,7 +35,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/bible_vault.db.gz"
+      "resources/bible_vault.db.gz",
+      "resources/study_vault.db.gz"
     ]
   }
 }

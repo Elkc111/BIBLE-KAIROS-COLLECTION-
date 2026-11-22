@@ -179,6 +179,38 @@
     </div>
   </div>
 
+  <div id="modal-study" class="modal hidden">
+    <div class="modal-card study-card">
+      <div class="modal-head">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <h3 id="study-title">Connections</h3>
+          <div class="testament-tabs">
+            <button id="tab-study-xrefs" class="tab-btn active">Cross-Refs &amp; Arcs</button>
+            <button id="tab-study-words" class="tab-btn">Original Words</button>
+          </div>
+        </div>
+        <button class="close-btn" data-close="modal-study">&times;</button>
+      </div>
+      <div id="study-xrefs-pane" class="study-pane">
+        <div class="study-controls">
+          <div class="segmented">
+            <button id="btn-xref-best" class="seg-btn active">Best (4+ votes)</button>
+            <button id="btn-xref-all" class="seg-btn">All Links</button>
+          </div>
+          <label class="prayer-attach"><input id="toggle-color-strands" type="checkbox" checked /> Color Strands</label>
+          <button id="btn-save-verse-card" class="pill pill-primary" style="font-size:12px;">Save Verse Card (PNG)</button>
+        </div>
+        <div id="study-arc-wrap" class="study-arc-wrap"></div>
+        <div id="study-xref-list" class="study-list"></div>
+      </div>
+      <div id="study-words-pane" class="study-pane hidden">
+        <div id="study-words-strip" class="study-words-strip"></div>
+        <div id="study-lex-detail" class="study-lex-detail"></div>
+        <div id="study-root-hits" class="study-list"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Reading Plans Drawer -->
   <div id="modal-plan" class="modal hidden">
     <div class="modal-card drawer-card">
@@ -309,7 +341,7 @@
         </div>
         <div class="setting-guide">
           <strong>Open Scripture Licenses &amp; Credits</strong>
-          <small>BSB (CC0 Public Domain) &middot; FBV (CC BY-SA 4.0) &middot; OEB, WEB &amp; KJV (Public Domain).<br><em>Built with Hyares &mdash; Zero ads, offline-first.</em> &middot; <button id="btn-selah-mode" class="selah-link" title="Quiet Focus Mode">Selah</button></small>
+          <small>BSB (CC0 Public Domain) &middot; FBV (CC BY-SA 4.0) &middot; OEB, WEB &amp; KJV (Public Domain) &middot; Cross-Refs: OpenBible.info &amp; trekhleb/bible-cross-references (CC BY 4.0 / MIT) &middot; Hebrew/Greek: STEPBible.org (CC BY 4.0).<br><em>Built with Hyares &mdash; Zero ads, offline-first.</em> &middot; <button id="btn-selah-mode" class="selah-link" title="Quiet Focus Mode">Selah</button></small>
         </div>
         <div class="setting-footer">
           <button id="btn-show-daily" class="pill pill-ghost">Show Today's Trio</button>
