@@ -983,19 +983,25 @@ function renderSlotFontGrid() {
 }
 
 async function exportFileOrShare(filename, textContent) {
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: filename, text: textContent });
-      return;
-    } catch (_) {}
-  }
   try {
-    await invoke("export_text_file", { filename, contents: textContent });
-    showToast(`Saved ${filename} to Downloads`);
-  } catch (_) {
-    await navigator.clipboard.writeText(textContent);
-    showToast(`Copied ${filename} to clipboard`);
+    const saved = await invoke("export_text_file", { filename, contents: textContent });
+    showToast(`Saved: ${saved}`);
+    return;
+  } catch (err) {
+    if (String(err).includes("NO_ANDROID_DIR")) {
+      const picked = await invoke("pick_android_backup_dir");
+      if (picked) {
+        const saved2 = await invoke("export_text_file", { filename, contents: textContent });
+        showToast(`Saved: ${saved2}`);
+        return;
+      }
+    }
   }
+  if (navigator.share) {
+    try { await navigator.share({ title: filename, text: textContent }); return; } catch (_) {}
+  }
+  await navigator.clipboard.writeText(textContent);
+  showToast(`Copied ${filename} to clipboard`);
 }
 
 
@@ -1815,7 +1821,7 @@ async function init() {
     const sub = state.pinFilter === "All" ? pins : pins.filter((p) => (p.folder || "General") === state.pinFilter);
     if (!sub.length) { showToast("No pins to export"); return; }
     const payload = JSON.stringify({ kairos_pins: 1, folder_filter: state.pinFilter, pins: sub }, null, 2);
-    await exportFileOrShare(`kairos-pins-${state.pinFilter.toLowerCase()}.json`, payload);
+    await exportFileOrShare(`kairos-pins-${state.pinFilter.toLowerCase()}.txt`, payload);
   };
   document.getElementById("inp-import-pins").onchange = async (e) => {
     const file = e.target.files?.[0];
@@ -1846,9 +1852,15 @@ async function init() {
     e.target.value = "";
   };
 
+  if (document.getElementById("btn-pick-backup-dir")) {
+    document.getElementById("btn-pick-backup-dir").onclick = async () => {
+      const name = await invoke("pick_android_backup_dir");
+      if (name) showToast(`Backup folder: ${name}`);
+    };
+  }
   document.getElementById("btn-export-backup").onclick = async () => {
     const payload = JSON.stringify({ kairos_backup: 1, prefs: state.prefs }, null, 2);
-    await exportFileOrShare(`kairos-backup-${localDateKey()}.json`, payload);
+    await exportFileOrShare(`kairos-backup-${localDateKey()}.txt`, payload);
   };
   document.getElementById("inp-import-backup").onchange = async (e) => {
     const file = e.target.files?.[0];

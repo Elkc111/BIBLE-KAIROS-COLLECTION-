@@ -126,7 +126,7 @@
       </div>
       <div class="pins-io-bar">
         <button id="btn-export-pins" class="pill pill-primary" style="font-size:12px;">Export Pins</button>
-        <label class="pill pill-ghost" style="font-size:12px;display:inline-flex;align-items:center;">Import Pins<input id="inp-import-pins" type="file" accept=".json" style="display:none;" /></label>
+        <label class="pill pill-ghost" style="font-size:12px;display:inline-flex;align-items:center;">Import Pins<input id="inp-import-pins" type="file" accept="*/*" style="display:none;" /></label>
       </div>
       <div id="pins-toolbar" class="pins-toolbar"></div><div id="pins-list" class="plan-days"></div><div id="recent-list" class="plan-days hidden"></div>
     </div>
@@ -318,8 +318,9 @@
           <strong>Recover Progress (Unified Backup)</strong>
           <small>Save or restore everything together—Reading Plans, Pins, Prayer List, History, and Themes.</small>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
-            <button id="btn-export-backup" class="pill pill-primary">Export Backup</button>
-            <label class="pill pill-ghost" style="display:inline-flex;align-items:center;">Recover Progress<input id="inp-import-backup" type="file" accept=".json" style="display:none;" /></label>
+            <button id="btn-pick-backup-dir" class="pill pill-ghost">Choose Backup Folder</button>
+            <button id="btn-export-backup" class="pill pill-primary">Export Backup (.txt)</button>
+            <label class="pill pill-ghost" style="display:inline-flex;align-items:center;">Recover Progress<input id="inp-import-backup" type="file" accept="*/*" style="display:none;" /></label>
           </div>
         </div>
         <div class="setting-guide">
@@ -334,7 +335,7 @@
           <strong>Import Bible Module (Offline)</strong>
           <small>Add standard MyBible (<code>.SQLite3</code>), e-Sword (<code>.bblx</code>), MySword, or <code>.db</code> modules. Kairos checks book/verse counts &amp; previews verses automatically.</small>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
-            <label class="pill pill-primary" style="display:inline-flex;align-items:center;">Choose File<input id="inp-import-file" type="file" accept=".sqlite3,.sqlite,.bblx,.bbli,.mybible,.db" style="display:none;" /></label>
+            <label class="pill pill-primary" style="display:inline-flex;align-items:center;">Choose File<input id="inp-import-file" type="file" accept="*/*" style="display:none;" /></label>
             <button id="btn-scan-dropin" class="pill pill-ghost">Scan drop_in/</button>
           </div>
           <div id="import-status" class="import-status hidden"></div>
