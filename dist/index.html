@@ -15,6 +15,7 @@
         <span class="chev">&#9662;</span>
       </button>
       <div class="nav-arrows">
+        <button id="btn-jump-back" class="icon-btn hidden" title="Back to Previous Spot">&#8617;</button>
         <button id="btn-prev" class="icon-btn" title="Previous Chapter">&#8592;</button>
         <button id="btn-next" class="icon-btn" title="Next Chapter">&#8594;</button>
       </div>
@@ -33,6 +34,7 @@
         <button class="seg-btn" data-mode-pick="scroll" title="East-West Scroll">Scroll</button>
       </div>
       <button id="btn-pins" class="pill pill-ghost" title="Saved Verse Pins">Pins</button>
+      <button id="btn-history" class="pill pill-ghost" title="Reading History">Hist</button>
       <button id="btn-prayer" class="pill pill-ghost" title="Personal Prayer List">Pray</button>
       <button id="btn-plan" class="pill pill-ghost">Plan</button>
       <button id="btn-settings" class="pill pill-ghost">Set</button>
@@ -107,10 +109,11 @@
   <div id="modal-search" class="modal hidden">
     <div class="modal-card search-card">
       <div class="search-input-wrap">
-        <input id="search-input" type="text" placeholder="Type reference (e.g. Rom 8, Prov 24:16) or search words..." autocomplete="off" />
+        <input id="search-input" type="text" placeholder="Type a reference, phrase, or what's on your heart (e.g. afraid at night, forgiving someone)..." autocomplete="off" />
         <select id="search-scope" class="search-scope-sel"></select>
       </div>
       <div id="search-results" class="search-results"></div>
+      <div id="search-pager" class="search-pager hidden"></div>
     </div>
   </div>
 
@@ -121,6 +124,7 @@
         <div class="testament-tabs">
           <button id="tab-pins-view" class="tab-btn active">Pins</button>
           <button id="tab-recent-view" class="tab-btn">Recent</button>
+          <button id="tab-notes-view" class="tab-btn">Notes</button>
         </div>
         <button class="close-btn" data-close="modal-pins">&times;</button>
       </div>
@@ -129,6 +133,12 @@
         <label class="pill pill-ghost" style="font-size:12px;display:inline-flex;align-items:center;">Import Pins<input id="inp-import-pins" type="file" accept="*/*" style="display:none;" /></label>
       </div>
       <div id="pins-toolbar" class="pins-toolbar"></div><div id="pins-list" class="plan-days"></div><div id="recent-list" class="plan-days hidden"></div>
+      <div id="notes-io-bar" class="pins-io-bar hidden">
+        <button id="btn-export-notes" class="pill pill-primary" style="font-size:12px;">Export Notes (.txt)</button>
+        <button id="btn-backup-notes" class="pill pill-ghost" style="font-size:12px;">Backup Notes</button>
+        <label class="pill pill-ghost" style="font-size:12px;display:inline-flex;align-items:center;">Restore Notes<input id="inp-import-notes" type="file" accept="*/*" style="display:none;" /></label>
+      </div>
+      <div id="notes-list" class="plan-days hidden"></div>
     </div>
   </div>
 
@@ -211,6 +221,53 @@
     </div>
   </div>
 
+  <!-- Sticky Note & Soft Highlight Modal -->
+  <div id="modal-note" class="modal hidden">
+    <div class="modal-card pin-pop-card">
+      <div class="modal-head">
+        <h3 id="note-modal-title">Sticky Note</h3>
+        <button class="close-btn" data-close="modal-note">&times;</button>
+      </div>
+      <div class="pin-pop-body">
+        <div class="hl-tint-row">
+          <span>Highlight:</span>
+          <button class="hl-dot active" data-hl-pick="" title="None">&times;</button>
+          <button class="hl-dot hl-gold" data-hl-pick="gold" title="Gold"></button>
+          <button class="hl-dot hl-sky" data-hl-pick="sky" title="Sky"></button>
+          <button class="hl-dot hl-rose" data-hl-pick="rose" title="Rose"></button>
+        </div>
+        <textarea id="note-editor-input" rows="4" placeholder="Write a personal note, sermon point, or reflection for this verse..."></textarea>
+        <div class="pin-pop-actions" style="justify-content:space-between;">
+          <button id="btn-note-delete" class="pill pill-ghost" style="font-size:12px;">Clear Note</button>
+          <button id="btn-note-save" class="pill pill-primary">Save Note</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grouped Multi-Verse Share Modal -->
+  <div id="modal-share-pop" class="modal hidden">
+    <div class="modal-card pin-pop-card">
+      <div class="modal-head">
+        <h3>Share Passage</h3>
+        <button class="close-btn" data-close="modal-share-pop">&times;</button>
+      </div>
+      <div class="pin-pop-body">
+        <div class="pin-range-row">
+          <span id="share-book-chap">Matthew 7:</span>
+          <label>From v. <input id="share-start-v" type="number" min="1" /></label>
+          <label>to v. <input id="share-end-v" type="number" min="1" /></label>
+        </div>
+        <div class="pin-pop-label">Translations to Include</div>
+        <select id="share-version-sel" style="background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:13px;"></select>
+        <div class="pin-pop-actions" style="justify-content:flex-end;">
+          <button id="btn-share-copy" class="pill pill-ghost">Copy Text</button>
+          <button id="btn-share-go" class="pill pill-primary">Share Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Reading Plans Drawer -->
   <div id="modal-plan" class="modal hidden">
     <div class="modal-card drawer-card">
@@ -220,7 +277,7 @@
       </div>
       <div class="plan-select-row">
         <select id="plan-select"></select>
-        <span id="plan-progress" class="plan-progress"></span>
+        <span id="plan-days-word" class="plan-progress" style="opacity:0.85;"></span><span id="plan-progress" class="plan-progress"></span>
       </div>
       <div id="plan-next-banner" class="plan-next-banner hidden"></div><div id="plan-days" class="plan-days"></div>
     </div>

@@ -37,6 +37,18 @@ struct BookInfo {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+struct NoteItem {
+    book_id: i64,
+    book_name: String,
+    chapter: i64,
+    verse: i64,
+    text: String,
+    #[serde(default)]
+    tint: String,
+    updated_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 struct PrayerItem {
     id: String,
     text: String,
@@ -74,6 +86,7 @@ fn default_font_style() -> String { "editorial".to_string() }
 fn default_line_height() -> String { "balanced".to_string() }
 fn default_color_code() -> bool { true }
 fn default_scroll_style() -> String { "ribbon".to_string() }
+fn default_scroll_density() -> String { "5".to_string() }
 fn default_color_strands() -> bool { true }
 fn default_wasd_step() -> i64 { 220 }
 
@@ -85,6 +98,10 @@ struct UserPrefs {
     view_mode: String,
     #[serde(default = "default_scroll_style")]
     scroll_style: String,
+    #[serde(default = "default_scroll_density")]
+    scroll_density: String,
+    #[serde(default)]
+    ribbon_height: i64,
     theme: String,
     font_size: i64,
     #[serde(default = "default_font_style")]
@@ -112,6 +129,12 @@ struct UserPrefs {
     wasd_step: i64,
     #[serde(default = "default_color_strands")]
     color_strands: bool,
+    #[serde(default)]
+    notes: Vec<NoteItem>,
+    #[serde(default)]
+    highlights: HashMap<String, String>,
+    #[serde(default)]
+    reading_days: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -339,9 +362,11 @@ fn default_prefs(available: &[TranslationInfo]) -> UserPrefs {
     UserPrefs {
         slots, book_id: 43, chapter: 3, view_mode: "cols".to_string(),
         scroll_style: default_scroll_style(), theme: "wood".to_string(),
+        scroll_density: default_scroll_density(),
+        ribbon_height: 0,
         font_size: 18, font_style: default_font_style(), line_height: default_line_height(),
         clean_pilcrow: true, color_code: default_color_code(),
-        active_plan: "gospels_psalms".to_string(), color_strands: true, completed_days: HashMap::new(),
+        active_plan: "gospels_psalms".to_string(), notes: vec![], highlights: HashMap::new(), reading_days: vec![], color_strands: true, completed_days: HashMap::new(),
         pins: vec![], slot_fonts: HashMap::new(), daily_dismissed_date: None,
         last_pin_folder: default_pin_folder(), history: vec![], prayers: vec![], wasd_step: default_wasd_step(),
     }
@@ -450,42 +475,143 @@ fn mark_read_today(state: State<AppState>, date_str: String) -> Result<(), Strin
     Ok(())
 }
 
+fn build_concept_groups(q: &str) -> Vec<(String, Vec<String>)> {
+    const STOP: &[&str] = &[
+        "i", "me", "my", "we", "our", "you", "your", "ye", "thee", "thou", "thy",
+        "he", "she", "it", "they", "them", "a", "an", "the", "and", "or", "but",
+        "in", "on", "at", "to", "for", "of", "with", "by", "from", "about", "what",
+        "when", "where", "how", "who", "why", "is", "are", "was", "were", "be",
+        "been", "being", "am", "do", "does", "did", "have", "has", "had", "will",
+        "would", "can", "could", "should", "shall", "if", "so", "that", "this",
+        "also", "verse", "verses", "bible", "says", "say", "getting", "someone", "not", "near",
+    ];
+    const CLUSTERS: &[(&[&str], &[&str])] = &[
+        (&["7", "77", "seven", "seventy", "seventyseven"], &["seven", "seventy", "sevenfold"]),
+        (&["1", "one", "first"], &["one", "first"]),
+        (&["3", "three", "third"], &["three", "third"]),
+        (&["12", "twelve"], &["twelve"]),
+        (&["40", "forty"], &["forty"]),
+        (&["deny", "denies", "denied", "disown", "disowns", "reject"], &["deny", "denies", "denied", "disown", "disowns", "confess", "acknowledge"]),
+        (&["judgement", "judgment", "judge", "judged"], &["judgment", "judgement", "judge", "father", "heaven", "throne"]),
+        (&["fall", "falls", "falleth", "fallen", "stumble", "slip"], &["fall", "falls", "falleth", "fallen", "stumble", "rise", "riseth"]),
+        (&["righteous", "just", "godly", "upright", "blameless"], &["righteous", "righteousness", "just", "upright"]),
+        (&["money", "cash", "pay", "debt", "poor", "wealth", "rich", "riches", "greed", "tithe", "generous"], &["money", "wealth", "riches", "treasure", "poor", "needy", "greed", "covet", "mammon", "generous", "silver", "gold"]),
+        (&["afraid", "fear", "scared", "anxious", "anxiety", "worry", "worried", "night", "dark", "terror", "protect", "safe"], &["fear", "afraid", "terror", "anxious", "worry", "trouble", "refuge", "fortress", "shelter", "shield", "peace", "trust", "shadow", "night"]),
+        (&["forgive", "forgiving", "forgiveness", "hurt", "betray", "enemy", "enemies", "anger", "angry", "bitter", "mercy"], &["forgive", "forgiven", "mercy", "compassion", "pardon", "grace", "enemy", "anger", "reconcile", "love"]),
+        (&["tired", "weary", "weak", "heavy", "burden", "sad", "depressed", "lonely", "grief", "cry", "pain", "sick", "heal"], &["weary", "heavy", "burden", "rest", "weak", "strength", "renew", "heal", "comfort", "brokenhearted", "sorrow", "tears", "hope"]),
+        (&["lost", "confused", "direction", "purpose", "path", "future", "guide", "wisdom", "wise", "plan", "plans"], &["path", "way", "light", "lamp", "guide", "wisdom", "understanding", "counsel", "trust", "plans", "steps"]),
+        (&["tempt", "tempted", "temptation", "sin", "sins", "lust", "clean", "pure", "guilt", "shame", "repent"], &["temptation", "tempted", "sin", "iniquity", "clean", "pure", "cleanse", "wash", "repent", "confess", "holy", "spirit", "overcome"]),
+        (&["pray", "prayer", "praying", "fast", "ask", "faith", "believe", "doubt", "wait"], &["pray", "prayer", "supplication", "ask", "seek", "knock", "faith", "believe", "trust", "wait", "fervent"]),
+        (&["saviour", "savior"], &["savior", "saviour"]),
+        (&["honour", "honor"], &["honor", "honour"]),
+        (&["favour", "favor"], &["favor", "favour"]),
+    ];
+
+    let mut groups = Vec::new();
+    let mut seen_base = std::collections::HashSet::new();
+    for raw_w in q.split(|c: char| !c.is_alphanumeric()) {
+        let w = raw_w.to_lowercase();
+        if w.is_empty() || (w.len() < 2 && !w.chars().all(|c| c.is_ascii_digit())) || STOP.contains(&w.as_str()) {
+            continue;
+        }
+        if !seen_base.insert(w.clone()) { continue; }
+        let mut terms = vec![w.clone()];
+        for suf in ["ing", "eth", "ed", "es", "s", "ness", "ly", "ful"] {
+            if w.len() > suf.len() + 3 && w.ends_with(suf) {
+                terms.push(w[..w.len() - suf.len()].to_string());
+            }
+        }
+        for (triggers, syns) in CLUSTERS {
+            if triggers.contains(&w.as_str()) {
+                for &s in *syns {
+                    if !terms.contains(&s.to_string()) { terms.push(s.to_string()); }
+                }
+            }
+        }
+        groups.push((w, terms));
+    }
+    groups
+}
+
 #[tauri::command]
-fn search_verses(state: State<AppState>, query: String, translation_code: String, limit: Option<i64>) -> Result<Vec<SearchHit>, String> {
+async fn search_verses(state: State<'_, AppState>, query: String, translation_code: String, limit: Option<i64>) -> Result<Vec<SearchHit>, String> {
     let v_guard = state.vault.lock().map_err(|e| e.to_string())?;
     let c_guard = state.custom.lock().map_err(|e| e.to_string())?;
     let vault = v_guard.as_ref().ok_or("Vault not initialized")?;
     let custom = c_guard.as_ref().ok_or("Custom vault not initialized")?;
     let q = query.trim();
     if q.is_empty() { return Ok(vec![]); }
-    let lim = limit.unwrap_or(50).min(150);
+    let lim = limit.unwrap_or(50).min(120);
 
-    let sanitized: String = q.split_whitespace().map(|w| format!(r#""{}""#, w.replace('"', ""))).collect::<Vec<_>>().join(" ");
-    if translation_code == "ALL" {
-        let mut stmt = vault.prepare("SELECT v.book_id, b.name || ' [' || t.code || ']', v.chapter, v.verse, v.text FROM verses_fts f JOIN verses v ON v.id = f.rowid JOIN translations t ON t.id = v.translation_id JOIN books b ON b.id = v.book_id WHERE f.text MATCH ?1 ORDER BY v.book_id, v.chapter, v.verse, t.id LIMIT ?2").map_err(|e| e.to_string())?;
-        let hits = stmt.query_map((&sanitized, lim), |r| Ok(SearchHit { book_id: r.get(0)?, book_name: r.get(1)?, chapter: r.get(2)?, verse: r.get(3)?, text: r.get(4)? }))
-            .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
-        return Ok(hits);
-    }
+    let exact_mode = q.starts_with('"') && q.ends_with('"') && q.len() > 2;
+    let groups = build_concept_groups(q);
 
-    let in_vault: bool = vault.query_row("SELECT EXISTS(SELECT 1 FROM translations WHERE code = ?1)", (&translation_code,), |r| r.get(0)).unwrap_or(false);
+    let in_vault = translation_code == "ALL" || vault.query_row("SELECT EXISTS(SELECT 1 FROM translations WHERE code = ?1)", (&translation_code,), |r| r.get::<_, bool>(0)).unwrap_or(false);
     if in_vault {
-        let mut stmt = vault.prepare("SELECT v.book_id, b.name, v.chapter, v.verse, v.text FROM verses_fts f JOIN verses v ON v.id = f.rowid JOIN translations t ON t.id = v.translation_id JOIN books b ON b.id = v.book_id WHERE f.text MATCH ?1 AND t.code = ?2 ORDER BY v.book_id, v.chapter, v.verse LIMIT ?3").map_err(|e| e.to_string())?;
-        let hits = stmt.query_map((&sanitized, &translation_code, lim), |r| Ok(SearchHit { book_id: r.get(0)?, book_name: r.get(1)?, chapter: r.get(2)?, verse: r.get(3)?, text: r.get(4)? }))
-            .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
-        return Ok(hits);
+        if exact_mode || groups.is_empty() {
+            let fts = q.split_whitespace().filter_map(|w| { let c = w.replace('"', ""); if c.is_empty() { None } else { Some(format!(r#""{}""#, c)) } }).collect::<Vec<_>>().join(" ");
+            if fts.is_empty() { return Ok(vec![]); }
+            let sql = if translation_code == "ALL" {
+                "SELECT v.book_id, b.name, v.chapter, v.verse, '[' || t.code || '] ' || v.text FROM verses_fts JOIN verses v ON v.id = verses_fts.rowid JOIN translations t ON t.id = v.translation_id JOIN books b ON b.id = v.book_id WHERE verses_fts.text MATCH ?1 ORDER BY bm25(verses_fts) LIMIT ?2"
+            } else {
+                "SELECT v.book_id, b.name, v.chapter, v.verse, v.text FROM verses_fts JOIN verses v ON v.id = verses_fts.rowid JOIN translations t ON t.id = v.translation_id JOIN books b ON b.id = v.book_id WHERE verses_fts.text MATCH ?1 AND t.code = ?3 ORDER BY bm25(verses_fts) LIMIT ?2"
+            };
+            let mut st = vault.prepare_cached(sql).map_err(|e| e.to_string())?;
+            let hits = if translation_code == "ALL" {
+                st.query_map((&fts, lim), |r| Ok(SearchHit { book_id: r.get(0)?, book_name: r.get(1)?, chapter: r.get(2)?, verse: r.get(3)?, text: r.get(4)? }))
+                    .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            } else {
+                st.query_map((&fts, lim, &translation_code), |r| Ok(SearchHit { book_id: r.get(0)?, book_name: r.get(1)?, chapter: r.get(2)?, verse: r.get(3)?, text: r.get(4)? }))
+                    .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            };
+            return Ok(hits);
+        }
+
+        // Query each concept group independently so common words never drown rare words
+        let sql = if translation_code == "ALL" {
+            "SELECT v.id, v.book_id, b.name, v.chapter, v.verse, '[' || t.code || '] ' || v.text, bm25(verses_fts)
+             FROM verses_fts JOIN verses v ON v.id = verses_fts.rowid JOIN translations t ON t.id = v.translation_id JOIN books b ON b.id = v.book_id
+             WHERE verses_fts.text MATCH ?1 ORDER BY bm25(verses_fts) LIMIT 65"
+        } else {
+            "SELECT v.id, v.book_id, b.name, v.chapter, v.verse, v.text, bm25(verses_fts)
+             FROM verses_fts JOIN verses v ON v.id = verses_fts.rowid JOIN translations t ON t.id = v.translation_id JOIN books b ON b.id = v.book_id
+             WHERE verses_fts.text MATCH ?1 AND t.code = ?2 ORDER BY bm25(verses_fts) LIMIT 65"
+        };
+        let mut st = vault.prepare_cached(sql).map_err(|e| e.to_string())?;
+        let mut acc: HashMap<i64, (f64, usize, SearchHit)> = HashMap::new();
+
+        for (base_w, terms) in groups.iter().take(7) {
+            let fts = terms.iter().take(12).map(|w| if w.len() >= 4 { format!("{}*", w) } else { format!(r#""{}""#, w) }).collect::<Vec<_>>().join(" OR ");
+            let rows: Vec<(i64, SearchHit, f64)> = if translation_code == "ALL" {
+                st.query_map((&fts,), |r| Ok((r.get(0)?, SearchHit { book_id: r.get(1)?, book_name: r.get(2)?, chapter: r.get(3)?, verse: r.get(4)?, text: r.get(5)? }, r.get::<_, f64>(6)?)))
+                    .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            } else {
+                st.query_map((&fts, &translation_code), |r| Ok((r.get(0)?, SearchHit { book_id: r.get(1)?, book_name: r.get(2)?, chapter: r.get(3)?, verse: r.get(4)?, text: r.get(5)? }, r.get::<_, f64>(6)?)))
+                    .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            };
+            let common_bonus = if matches!(base_w.as_str(), "man" | "men" | "god" | "lord" | "before" | "after" | "day" | "people") { 4.0 } else { 14.0 };
+            for (vid, hit, bm) in rows {
+                let exact_bonus = if hit.text.to_lowercase().contains(base_w.as_str()) { 6.0 } else { 0.0 };
+                let score = (-bm).min(15.0) + common_bonus + exact_bonus;
+                acc.entry(vid).and_modify(|e| { e.0 += score; e.1 += 1; }).or_insert((score, 1, hit));
+            }
+        }
+
+        let mut ranked: Vec<(f64, SearchHit)> = acc.into_values().map(|(sc, gcnt, h)| (sc + (gcnt as f64) * 24.0, h)).collect();
+        ranked.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        ranked.truncate(lim as usize);
+        return Ok(ranked.into_iter().map(|(_, h)| h).collect());
     }
 
-    let books_map: HashMap<i64, String> = vault.prepare("SELECT id, name FROM books").map_err(|e| e.to_string())?
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?
-        .collect::<Result<HashMap<_, _>, _>>().map_err(|e| e.to_string())?;
+    let books_map: HashMap<i64, String> = vault.prepare_cached("SELECT id, name FROM books").map_err(|e| e.to_string())?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.collect::<Result<HashMap<_, _>, _>>().map_err(|e| e.to_string())?;
     let pattern = format!("%{}%", q);
-    let mut stmt = custom.prepare("SELECT v.book_id, v.chapter, v.verse, v.text FROM verses v JOIN translations t ON t.id = v.translation_id WHERE t.code = ?1 AND v.text LIKE ?2 ORDER BY v.book_id, v.chapter, v.verse LIMIT ?3").map_err(|e| e.to_string())?;
-    let hits = stmt.query_map((&translation_code, &pattern, lim), |r| {
+    let mut stmt = custom.prepare_cached("SELECT v.book_id, v.chapter, v.verse, v.text FROM verses v JOIN translations t ON t.id = v.translation_id WHERE t.code = ?1 AND v.text LIKE ?2 ORDER BY v.book_id, v.chapter, v.verse LIMIT ?3").map_err(|e| e.to_string())?;
+    let res = stmt.query_map((&translation_code, &pattern, lim), |r| {
         let bid: i64 = r.get(0)?;
         Ok(SearchHit { book_id: bid, book_name: books_map.get(&bid).cloned().unwrap_or_default(), chapter: r.get(1)?, verse: r.get(2)?, text: r.get(3)? })
-    }).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
-    Ok(hits)
+    }).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string());
+    res
 }
 
 #[tauri::command]
@@ -768,9 +894,92 @@ async fn pick_android_backup_dir(app: AppHandle, state: State<'_, AppState>) -> 
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = (app, state);
-        Ok(Some("Downloads".to_string()))
+        let _ = app;
+        let picked: Option<String> = tauri::async_runtime::spawn_blocking(|| {
+            #[cfg(target_os = "windows")]
+            {
+                let out = std::process::Command::new("powershell")
+                    .args([
+                        "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+                        "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Choose Kairos Backup Folder'; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath }"
+                    ])
+                    .output()
+                    .ok()?;
+                if !out.status.success() { return None; }
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                return if s.is_empty() { None } else { Some(s) };
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let out = std::process::Command::new("osascript")
+                    .args(["-e", r#"POSIX path of (choose folder with prompt "Choose Kairos Backup Folder")"#])
+                    .output()
+                    .ok()?;
+                if !out.status.success() { return None; }
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                return if s.is_empty() { None } else { Some(s) };
+            }
+            #[cfg(all(unix, not(target_os = "macos")))]
+            {
+                if let Ok(out) = std::process::Command::new("zenity")
+                    .args(["--file-selection", "--directory", "--title=Choose Kairos Backup Folder"])
+                    .output()
+                {
+                    if !out.status.success() { return None; }
+                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    return if s.is_empty() { None } else { Some(s) };
+                }
+                if let Ok(out) = std::process::Command::new("kdialog")
+                    .args(["--getexistingdirectory", ".", "--title", "Choose Kairos Backup Folder"])
+                    .output()
+                {
+                    if !out.status.success() { return None; }
+                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    return if s.is_empty() { None } else { Some(s) };
+                }
+                if let Ok(out) = std::process::Command::new("python3")
+                    .args(["-c", "import tkinter as tk, tkinter.filedialog as fd; r=tk.Tk(); r.withdraw(); print(fd.askdirectory(title='Choose Kairos Backup Folder') or '')"])
+                    .output()
+                {
+                    if !out.status.success() { return None; }
+                    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    return if s.is_empty() { None } else { Some(s) };
+                }
+                None
+            }
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let Some(dir_str) = picked else { return Ok(None); };
+        let g = state.prefs.lock().map_err(|e| e.to_string())?;
+        if let Some(p_conn) = g.as_ref() {
+            let _ = p_conn.execute(
+                "INSERT INTO kv (k, val) VALUES ('desktop_backup_dir', ?1) ON CONFLICT(k) DO UPDATE SET val = excluded.val",
+                (&dir_str,),
+            );
+        }
+        Ok(Some(dir_str))
     }
+}
+
+#[cfg(not(target_os = "android"))]
+fn resolve_desktop_backup_dir(app: &AppHandle, state: &State<'_, AppState>) -> PathBuf {
+    if let Ok(g) = state.prefs.lock() {
+        if let Some(p_conn) = g.as_ref() {
+            if let Ok(saved) = p_conn.query_row(
+                "SELECT val FROM kv WHERE k = 'desktop_backup_dir'",
+                [],
+                |r| r.get::<_, String>(0),
+            ) {
+                let p = PathBuf::from(saved.trim());
+                if !p.as_os_str().is_empty() && (p.is_dir() || std::fs::create_dir_all(&p).is_ok()) {
+                    return p;
+                }
+            }
+        }
+    }
+    app.path().download_dir().unwrap_or_else(|_| state.data_dir.clone())
 }
 
 #[cfg(target_os = "android")]
@@ -803,7 +1012,7 @@ async fn export_text_file(app: AppHandle, state: State<'_, AppState>, filename: 
     }
     #[cfg(not(target_os = "android"))]
     {
-        let dir = app.path().download_dir().unwrap_or_else(|_| state.data_dir.clone());
+        let dir = resolve_desktop_backup_dir(&app, &state);
         let _ = std::fs::create_dir_all(&dir);
         let target = dir.join(&safe_name);
         std::fs::write(&target, contents.as_bytes()).map_err(|e| e.to_string())?;
@@ -820,7 +1029,7 @@ async fn export_binary_file(app: AppHandle, state: State<'_, AppState>, filename
     }
     #[cfg(not(target_os = "android"))]
     {
-        let dir = app.path().download_dir().unwrap_or_else(|_| state.data_dir.clone());
+        let dir = resolve_desktop_backup_dir(&app, &state);
         let _ = std::fs::create_dir_all(&dir);
         let target = dir.join(&safe_name);
         std::fs::write(&target, &bytes).map_err(|e| e.to_string())?;

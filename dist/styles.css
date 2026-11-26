@@ -997,3 +997,138 @@ html[data-theme="parchment"], html[data-theme="wood"], html[data-theme="stone"],
 .word-trans { font-size: 11px; font-style: italic; color: var(--text-muted); }
 .word-gloss { font-size: 11.5px; color: var(--text); }
 .study-lex-detail { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; line-height: 1.5; background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+
+
+/* === V1.5 NOTES & HIGHLIGHTS === */
+.hl-tint-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-muted); }
+.hl-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface-2); color: var(--text-muted); cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
+.hl-dot.active { border-color: var(--accent); transform: scale(1.12); }
+.hl-gold { background: rgba(212, 168, 83, 0.45); }
+.hl-sky { background: rgba(110, 175, 235, 0.45); }
+.hl-rose { background: rgba(220, 125, 145, 0.45); }
+.hl-v-gold { background: rgba(212, 168, 83, 0.14) !important; border-color: rgba(212, 168, 83, 0.35) !important; }
+.hl-v-sky { background: rgba(110, 175, 235, 0.14) !important; border-color: rgba(110, 175, 235, 0.35) !important; }
+.hl-v-rose { background: rgba(220, 125, 145, 0.14) !important; border-color: rgba(220, 125, 145, 0.35) !important; }
+#note-editor-input { width: 100%; resize: vertical; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font-family: var(--font-sans); font-size: 13.5px; line-height: 1.5; outline: none; }
+.inline-note-strip { grid-column: 1 / -1; margin: 2px 14px 4px; padding: 5px 10px; border-left: 3px solid var(--accent); border-radius: 0 7px 7px 0; background: var(--accent-soft); font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.inline-note-strip:hover { filter: brightness(1.08); }
+
+/* === V1.5.1 HIGHLIGHT & NOTES FIX === */
+.hl-gold { background: rgba(212, 168, 83, 0.72) !important; }
+.hl-sky  { background: rgba(82, 162, 242, 0.72) !important; }
+.hl-rose { background: rgba(224, 102, 136, 0.72) !important; }
+
+.hl-v-gold { background: rgba(212, 168, 83, 0.28) !important; border-color: rgba(190, 140, 48, 0.70) !important; }
+.hl-v-sky  { background: rgba(82, 162, 242, 0.25) !important; border-color: rgba(68, 145, 224, 0.70) !important; }
+.hl-v-rose { background: rgba(224, 102, 136, 0.25) !important; border-color: rgba(205, 86, 120, 0.70) !important; }
+
+.ribbon-col-head .inline-note-strip { margin: 6px 0 0; }
+
+/* === V1.5.2 SCROLL HIGHLIGHT FIX === */
+.ribbon-cell.hl-v-gold, .ribbon-col-head.hl-v-gold, .sheet-verse.hl-v-gold { background: rgba(212, 168, 83, 0.28) !important; border-color: rgba(190, 140, 48, 0.75) !important; }
+.ribbon-cell.hl-v-sky,  .ribbon-col-head.hl-v-sky,  .sheet-verse.hl-v-sky  { background: rgba(82, 162, 242, 0.25) !important; border-color: rgba(68, 145, 224, 0.75) !important; }
+.ribbon-cell.hl-v-rose, .ribbon-col-head.hl-v-rose, .sheet-verse.hl-v-rose { background: rgba(224, 102, 136, 0.25) !important; border-color: rgba(205, 86, 120, 0.75) !important; }
+
+/* === V1.5.3 SEARCH PAGER === */
+.search-pager {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 8px 14px; border-top: 1px solid var(--border-subtle);
+  font-size: 12px; color: var(--text-muted); background: var(--surface);
+}
+
+/* === V1.5.4 ADAPTIVE EQUAL-THIRDS RIBBON === */
+.ew-bar-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ribbon-stage .ribbon-rail { width: 100%; padding: 9px 10px; z-index: 8; background: var(--surface); }
+.ribbon-head-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; }
+.ribbon-col-head .row-actions {
+  position: static !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.ribbon-col-head .copy-mini { padding: 2px 6px; font-size: 10px; }
+
+.ribbon-stage.ribbon-d-3,
+.ribbon-stage.ribbon-d-5 {
+  grid-template-rows: auto repeat(3, minmax(max-content, 1fr));
+  height: auto;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  align-items: stretch;
+}
+.ribbon-stage.ribbon-d-3 { gap: 6px 9px; }
+.ribbon-stage.ribbon-d-3 .ribbon-col-head { padding: 6px 10px; font-size: 11px; }
+.ribbon-stage.ribbon-d-3 .ribbon-cell {
+  min-height: 0;
+  padding: 8px 11px 22px;
+  font-size: calc(var(--reader-size) * 0.88);
+  line-height: 1.44;
+}
+.ribbon-stage.ribbon-d-5 { gap: 7px 10px; }
+.ribbon-stage.ribbon-d-5 .ribbon-col-head { padding: 7px 12px; }
+.ribbon-stage.ribbon-d-5 .ribbon-cell {
+  min-height: 0;
+  padding: 10px 13px 24px;
+  font-size: calc(var(--reader-size) * 0.91);
+  line-height: 1.52;
+}
+
+.ribbon-stage.compact-ribbon-stage {
+  grid-template-rows: repeat(3, minmax(max-content, 1fr));
+  height: auto;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  align-items: stretch;
+  gap: 5px 7px;
+  padding: 8px 10px 12px 0;
+}
+.ribbon-stage.compact-ribbon-stage .compact-rail {
+  padding: 8px 6px;
+  justify-content: center;
+  align-items: center;
+}
+.ribbon-stage.compact-ribbon-stage .compact-cell {
+  min-height: 0;
+  padding: 8px 10px 10px;
+  font-size: calc(var(--reader-size) * 0.85);
+  line-height: 1.42;
+  border-radius: 9px;
+}
+.compact-cell .row-actions {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  display: inline-flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.compact-cell:hover .row-actions,
+.compact-cell.selected .row-actions { opacity: 1; }
+.compact-cell .copy-mini { padding: 2px 6px; font-size: 10px; }
+
+.ribbon-resize-handle {
+  height: 16px;
+  margin: 2px 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  user-select: none;
+  touch-action: none;
+}
+.ribbon-resize-handle span {
+  width: 56px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+.ribbon-resize-handle:hover span {
+  width: 84px;
+  background: var(--accent);
+}

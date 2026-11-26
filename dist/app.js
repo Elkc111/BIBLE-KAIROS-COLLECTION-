@@ -211,7 +211,10 @@ let state = {
   selEnd: null,
   pinDraftFolder: null,
   pinsTab: "pins",
-  searchScope: null,
+  activeNoteVerse: null, noteDraftTint: "",
+  searchScope: "ALL",
+  searchPage: 0,
+  jumpStack: [],
   studyBookId: null, studyChap: null, studyVerse: null, studyTab: "xrefs", studyMinVotes: 4, studyData: null, activeStrongId: null,
   pickerTestament: "NT",
   pickerBookId: 43,
@@ -382,6 +385,8 @@ async function markReadToday() {
   const today = localDateKey();
   if (state.lastReadDate === today) return;
   state.lastReadDate = today;
+  if (!state.prefs.reading_days) state.prefs.reading_days = [];
+  if (!state.prefs.reading_days.includes(today)) { state.prefs.reading_days.push(today); await persistPrefs(); }
   await invoke("mark_read_today", { dateStr: today });
   document.getElementById("read-badge").classList.remove("hidden");
 }
@@ -558,6 +563,21 @@ function attachHorizontalWheel(el) {
   }, { passive: false });
 }
 
+
+function verseKey(b, c, v) { return `${b}:${c}:${v}`; }
+function getNoteFor(b, c, v) {
+  return (state.prefs.notes || []).find((n) => n.book_id === b && n.chapter === c && n.verse === v);
+}
+function getHighlightClass(b, c, v) {
+  const t = (state.prefs.highlights || {})[verseKey(b, c, v)];
+  return t ? `hl-v-${t}` : "";
+}
+function inlineNoteHtml(v) {
+  const n = getNoteFor(state.prefs.book_id, state.prefs.chapter, v);
+  if (!n || !n.text) return "";
+  return `<div class="inline-note-strip" data-note="${v}" title="Tap to view/edit note">Note: ${escapeHtml(n.text)}</div>`;
+}
+
 function countPinsFor(bookId, chapter, verse) {
   return (state.prefs.pins || []).filter((p) => {
     const endV = p.end_verse || p.verse;
@@ -573,6 +593,7 @@ function actionButtonsHtml(verseNum) {
       <button class="copy-mini ${cnt > 0 ? "pinned" : ""}" data-pin="${verseNum}" title="Pin verse (unlimited)">${pinLabel}</button>
       <button class="copy-mini" data-share="${verseNum}" title="Share or Copy">Share</button>
       <button class="copy-mini" data-links="${verseNum}" title="Cross-Refs, Arcs & Original Words">Links</button>
+      <button class="copy-mini ${getNoteFor(state.prefs.book_id, state.prefs.chapter, verseNum) ? "pinned" : ""}" data-note="${verseNum}" title="Sticky Note & Highlight">${getNoteFor(state.prefs.book_id, state.prefs.chapter, verseNum) ? "Note &bull;" : "Note"}</button>
     </div>
   `;
 }
@@ -602,7 +623,7 @@ function renderReader() {
   if (state.prefs.view_mode === "cols") {
     const rowsHtml = state.rows
       .map((row) => {
-        const selectedClass = isVerseSelected(row.verse) ? "selected" : "";
+        const selectedClass = (isVerseSelected(row.verse) ? "selected " : "") + getHighlightClass(state.prefs.book_id, state.prefs.chapter, row.verse);
         const cellsHtml = state.prefs.slots
           .map((code, slotIdx) => {
             const cell = row.cells[code];
@@ -614,14 +635,14 @@ function renderReader() {
             return `<div class="verse-cell ${pClass} ${gapClass}" data-slot="${slotIdx}">${head}<span class="verse-num">${row.verse}</span>${body}</div>`;
           })
           .join("");
-        return `<div class="verse-row ${selectedClass}" data-verse="${row.verse}">${cellsHtml}${actionButtonsHtml(row.verse)}</div>`;
+        return `<div class="verse-row ${selectedClass}" data-verse="${row.verse}">${cellsHtml}${inlineNoteHtml(row.verse)}${actionButtonsHtml(row.verse)}</div>`;
       })
       .join("");
     reader.innerHTML = banner + rowsHtml;
   } else if (state.prefs.view_mode === "stack") {
     const cardsHtml = state.rows
       .map((row) => {
-        const selectedClass = isVerseSelected(row.verse) ? "selected" : "";
+        const selectedClass = (isVerseSelected(row.verse) ? "selected " : "") + getHighlightClass(state.prefs.book_id, state.prefs.chapter, row.verse);
         const linesHtml = state.prefs.slots
           .map((code, slotIdx) => {
             const cell = row.cells[code];
@@ -634,14 +655,14 @@ function renderReader() {
             `;
           })
           .join("");
-        return `<div class="stack-card ${selectedClass}" data-verse="${row.verse}"><div class="stack-verse-tag">VERSE ${row.verse}</div>${linesHtml}${actionButtonsHtml(row.verse)}</div>`;
+        return `<div class="stack-card ${selectedClass}" data-verse="${row.verse}"><div class="stack-verse-tag">VERSE ${row.verse}</div>${linesHtml}${inlineNoteHtml(row.verse)}${actionButtonsHtml(row.verse)}</div>`;
       })
       .join("");
     reader.innerHTML = banner + `<div class="stack-wrap">${cardsHtml}</div>`;
   } else if (state.prefs.view_mode === "bubbles") {
     const bubblesHtml = state.rows
       .map((row) => {
-        const selectedClass = isVerseSelected(row.verse) ? "selected" : "";
+        const selectedClass = (isVerseSelected(row.verse) ? "selected " : "") + getHighlightClass(state.prefs.book_id, state.prefs.chapter, row.verse);
         const slotsHtml = state.prefs.slots
           .map((code, slotIdx) => {
             const cell = row.cells[code];
@@ -654,7 +675,7 @@ function renderReader() {
             `;
           })
           .join("");
-        return `<div class="bubble-card ${selectedClass}" data-verse="${row.verse}"><div class="bubble-head">VERSE ${row.verse}</div>${slotsHtml}${actionButtonsHtml(row.verse)}</div>`;
+        return `<div class="bubble-card ${selectedClass}" data-verse="${row.verse}"><div class="bubble-head">VERSE ${row.verse}</div>${slotsHtml}${inlineNoteHtml(row.verse)}${actionButtonsHtml(row.verse)}</div>`;
       })
       .join("");
     reader.innerHTML = banner + `<div class="ew-bar"><span class="ew-hint">Scroll mouse wheel to glide East &rarr; West</span></div><div id="ew-stage" class="bubbles-stage">${bubblesHtml}</div>`;
@@ -663,25 +684,52 @@ function renderReader() {
     stage.scrollLeft = prevLeft;
   } else {
     const sc = state.prefs.scroll_style || "ribbon";
+    const rawSd = String(state.prefs.scroll_density || "3");
+    const sd = ["3", "5"].includes(rawSd) ? rawSd : "3";
+    const densityPicker = sc === "ribbon" ? `
+        <div class="segmented" title="Verse box height & right-stretch">
+          <button class="seg-btn ${sd === "3" ? "active" : ""}" data-inline-density="3">2&ndash;3 Lines</button>
+          <button class="seg-btn ${sd === "5" ? "active" : ""}" data-inline-density="5">5 Lines</button>
+        </div>` : "";
     const switcher = `
       <div class="ew-bar">
         <span class="ew-hint">Scroll mouse wheel to unroll East &rarr; West</span>
-        <div class="segmented">
-          <button class="seg-btn ${sc === "ribbon" ? "active" : ""}" data-inline-scroll="ribbon">Ribbon Flow</button>
-          <button class="seg-btn ${sc === "compact" ? "active" : ""}" data-inline-scroll="compact">Compact Folio</button>
+        <div class="ew-bar-controls">
+          ${densityPicker}
+          <div class="segmented">
+            <button class="seg-btn ${sc === "ribbon" ? "active" : ""}" data-inline-scroll="ribbon">Ribbon Flow</button>
+            <button class="seg-btn ${sc === "compact" ? "active" : ""}" data-inline-scroll="compact">Compact Folio</button>
+          </div>
         </div>
       </div>
     `;
 
     if (sc === "ribbon") {
+      const cfg = sd === "3"
+        ? { lines: 2.7, scale: 0.88, minW: 225, maxW: 920, pad: 34 }
+        : { lines: 4.4, scale: 0.91, minW: 225, maxW: 660, pad: 36 };
+      const fs = Number(state.prefs.font_size || 18);
+      const charPx = fs * cfg.scale * 0.56;
+      const railW = window.innerWidth <= 760 ? 76 : 96;
+      const colWidths = [];
+
       let gridHtml = `<div class="ribbon-rail rail-top">VERSE</div>`;
       state.prefs.slots.forEach((code) => {
         gridHtml += `<div class="ribbon-rail"><div class="ribbon-rail-code">${code}</div><div class="ribbon-rail-lens">${lensFor(code)}</div></div>`;
       });
 
       state.rows.forEach((row) => {
-        const sel = isVerseSelected(row.verse) ? "selected" : "";
-        gridHtml += `<div class="ribbon-col-head ${sel}" data-verse="${row.verse}">Verse ${row.verse}${actionButtonsHtml(row.verse)}</div>`;
+        let maxChars = 24;
+        state.prefs.slots.forEach((code) => {
+          const cell = row.cells[code];
+          const len = cell ? cleanDisplayText(cell.formatted_text || cell.text).length : 0;
+          if (len > maxChars) maxChars = len;
+        });
+        const w = Math.max(cfg.minW, Math.min(cfg.maxW, Math.ceil((maxChars / cfg.lines) * charPx + cfg.pad)));
+        colWidths.push(`${w}px`);
+
+        const sel = `${isVerseSelected(row.verse) ? "selected" : ""} ${getHighlightClass(state.prefs.book_id, state.prefs.chapter, row.verse)}`.trim();
+        gridHtml += `<div class="ribbon-col-head ${sel}" data-verse="${row.verse}"><div class="ribbon-head-top"><span>Verse ${row.verse}</span>${actionButtonsHtml(row.verse)}</div>${inlineNoteHtml(row.verse)}</div>`;
         state.prefs.slots.forEach((code, slotIdx) => {
           const cell = row.cells[code];
           const txt = cell ? formatScriptureHtml(cell.formatted_text || cell.text) : "—";
@@ -690,27 +738,44 @@ function renderReader() {
         });
       });
 
-      reader.innerHTML = banner + switcher + `<div id="ew-stage" class="ribbon-stage">${gridHtml}</div>`;
+      const trackCols = `${railW}px ${colWidths.join(" ")}`;
+      const savedH = Number(state.prefs.ribbon_height || localStorage.getItem("kairos_ribbon_h") || 0);
+      const hStyle = savedH >= 320 ? `height:${savedH}px;` : "";
+      reader.innerHTML = banner + switcher +
+        `<div id="ew-stage" class="ribbon-stage ribbon-d-${sd}" style="grid-template-columns:${trackCols};${hStyle}">${gridHtml}</div>` +
+        `<div id="ribbon-resize-handle" class="ribbon-resize-handle" title="Drag down/up to adjust height (double-click to reset)"><span></span></div>`;
     } else {
-      const foliosHtml = state.rows
-        .map((row) => {
-          const selectedClass = isVerseSelected(row.verse) ? "selected" : "";
-          const colsHtml = state.prefs.slots
-            .map((code) => {
-              const cell = row.cells[code];
-              const txt = cell ? formatScriptureHtml(cell.formatted_text || cell.text) : "—";
-              return `
-                <div class="sheet-col" data-slot="${slotIdx}">
-                  <div class="sheet-col-tag">${code}</div>
-                  <span class="verse-num">${row.verse}</span>${txt}
-                </div>
-              `;
-            })
-            .join("");
-          return `<div class="sheet-verse ${selectedClass}" data-verse="${row.verse}">${colsHtml}${actionButtonsHtml(row.verse)}</div>`;
-        })
-        .join("");
-      reader.innerHTML = banner + switcher + `<div id="ew-stage" class="sheet-stage">${foliosHtml}</div>`;
+      const railW = window.innerWidth <= 760 ? 54 : 68;
+      const fs = Number(state.prefs.font_size || 18);
+      const charPx = fs * 0.85 * 0.55;
+      const colWidths = [];
+      let gridHtml = "";
+      state.prefs.slots.forEach((code) => {
+        gridHtml += `<div class="ribbon-rail compact-rail"><div class="ribbon-rail-code">${code}</div></div>`;
+      });
+
+      state.rows.forEach((row) => {
+        let maxChars = 24;
+        state.prefs.slots.forEach((code) => {
+          const cell = row.cells[code];
+          const len = cell ? cleanDisplayText(cell.formatted_text || cell.text).length : 0;
+          if (len > maxChars) maxChars = len;
+        });
+        const w = Math.max(195, Math.min(460, Math.ceil((maxChars / 4.2) * charPx + 28)));
+        colWidths.push(`${w}px`);
+
+        const sel = `${isVerseSelected(row.verse) ? "selected" : ""} ${getHighlightClass(state.prefs.book_id, state.prefs.chapter, row.verse)}`.trim();
+        state.prefs.slots.forEach((code, slotIdx) => {
+          const cell = row.cells[code];
+          const txt = cell ? formatScriptureHtml(cell.formatted_text || cell.text) : "—";
+          const noteHtml = slotIdx === 0 ? inlineNoteHtml(row.verse) : "";
+          const actHtml = slotIdx === 0 ? actionButtonsHtml(row.verse) : "";
+          gridHtml += `<div class="ribbon-cell compact-cell ${sel}" data-slot="${slotIdx}" data-verse="${row.verse}"><span class="verse-num">${row.verse}</span>${txt}${noteHtml}${actHtml}</div>`;
+        });
+      });
+
+      const trackCols = `${railW}px ${colWidths.join(" ")}`;
+      reader.innerHTML = banner + switcher + `<div id="ew-stage" class="ribbon-stage compact-ribbon-stage" style="grid-template-columns:${trackCols};">${gridHtml}</div>`;
     }
 
     const stage = document.getElementById("ew-stage");
@@ -725,11 +790,61 @@ function renderReader() {
         await persistPrefs();
       };
     });
+    reader.querySelectorAll("[data-inline-density]").forEach((btn) => {
+      btn.onclick = async () => {
+        state.prefs.scroll_density = btn.dataset.inlineDensity;
+        renderReader();
+        await persistPrefs();
+      };
+    });
+
+    const grip = document.getElementById("ribbon-resize-handle");
+    if (grip && stage) {
+      let minNaturalH = 320;
+      grip.ondblclick = async () => {
+        state.prefs.ribbon_height = 0;
+        localStorage.removeItem("kairos_ribbon_h");
+        stage.style.height = "";
+        await persistPrefs();
+      };
+      grip.onpointerdown = (e) => {
+        e.preventDefault();
+        grip.setPointerCapture(e.pointerId);
+        const startY = e.clientY;
+        const startH = stage.getBoundingClientRect().height;
+        const prevInlineH = stage.style.height;
+        stage.style.height = "";
+        minNaturalH = Math.max(300, Math.round(stage.getBoundingClientRect().height));
+        stage.style.height = prevInlineH || `${Math.round(startH)}px`;
+        const maxH = Math.max(minNaturalH + 80, window.innerHeight - 135);
+        const onMove = (ev) => {
+          const nextH = Math.max(minNaturalH, Math.min(maxH, Math.round(startH + (ev.clientY - startY))));
+          stage.style.height = `${nextH}px`;
+        };
+        const onUp = async (ev) => {
+          grip.releasePointerCapture(ev.pointerId);
+          grip.removeEventListener("pointermove", onMove);
+          grip.removeEventListener("pointerup", onUp);
+          const finalH = Math.round(stage.getBoundingClientRect().height);
+          if (finalH <= minNaturalH + 4) {
+            state.prefs.ribbon_height = 0;
+            localStorage.removeItem("kairos_ribbon_h");
+            stage.style.height = "";
+          } else {
+            state.prefs.ribbon_height = finalH;
+            localStorage.setItem("kairos_ribbon_h", String(finalH));
+          }
+          await persistPrefs();
+        };
+        grip.addEventListener("pointermove", onMove);
+        grip.addEventListener("pointerup", onUp);
+      };
+    }
   }
 
   reader.querySelectorAll("[data-verse]").forEach((el) => {
     el.addEventListener("click", (e) => {
-      if (e.target.dataset.share || e.target.dataset.pin || e.target.dataset.links) return;
+      if (e.target.dataset.share || e.target.dataset.pin || e.target.dataset.links || e.target.dataset.note) return;
       const v = Number(el.dataset.verse);
       if (e.shiftKey && state.selectedVerse !== null) {
         state.selEnd = v;
@@ -744,6 +859,9 @@ function renderReader() {
     });
   });
 
+  reader.querySelectorAll("[data-note]").forEach((btn) => {
+    btn.addEventListener("click", (e) => { e.stopPropagation(); openNoteModal(Number(btn.dataset.note)); });
+  });
   reader.querySelectorAll("[data-links]").forEach((btn) => {
     btn.addEventListener("click", (e) => { e.stopPropagation(); openStudyModal(Number(btn.dataset.links)); });
   });
@@ -755,28 +873,32 @@ function renderReader() {
   });
 
   reader.querySelectorAll("[data-share]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const v = Number(btn.dataset.share);
-      const b = bookById(state.prefs.book_id);
-      const startV = isVerseSelected(v) ? Math.min(state.selectedVerse, state.selEnd ?? state.selectedVerse) : v;
-      const endV = isVerseSelected(v) ? Math.max(state.selectedVerse, state.selEnd ?? state.selectedVerse) : v;
-      const picked = state.rows.filter((r) => r.verse >= startV && r.verse <= endV);
-      if (!picked.length) return;
-      const blocks = picked.map((row) => {
-        const prefix = picked.length > 1 ? `v.${row.verse} ` : "";
-        return state.prefs.slots
-          .map((c) => row.cells[c] ? `${prefix}[${c}] ${cleanDisplayText(row.cells[c].text)}` : "")
-          .filter(Boolean)
-          .join("\n\n");
-      }).join("\n\n---\n\n");
-      const ref = endV > startV ? `${b.name} ${state.prefs.chapter}:${startV}–${endV}` : `${b.name} ${state.prefs.chapter}:${startV}`;
-      await shareOrCopy(ref, `${ref}\n\n${blocks}`);
+      openShareModal(Number(btn.dataset.share));
     });
   });
 }
 
-async function loadChapter(bookId, chapter, targetVerse = null, targetEnd = null) {
+function pushJumpBack() {
+  if (!state.prefs || !state.books.length) return;
+  if (!Array.isArray(state.jumpStack)) state.jumpStack = [];
+  const curB = state.prefs.book_id;
+  const curC = state.prefs.chapter;
+  const curV = state.selectedVerse || null;
+  const top = state.jumpStack[state.jumpStack.length - 1];
+  if (!top || top.bookId !== curB || top.chapter !== curC || top.verse !== curV) {
+    state.jumpStack.push({ bookId: curB, chapter: curC, verse: curV });
+    if (state.jumpStack.length > 20) state.jumpStack.shift();
+  }
+  const backBtn = document.getElementById("btn-jump-back");
+  if (backBtn) backBtn.classList.toggle("hidden", state.jumpStack.length === 0);
+}
+
+async function loadChapter(bookId, chapter, targetVerse = null, targetEnd = null, recordJump = true) {
+  if (recordJump && state.rows.length && (bookId !== state.prefs.book_id || chapter !== state.prefs.chapter)) {
+    pushJumpBack();
+  }
   state.prefs.book_id = bookId;
   state.prefs.chapter = chapter;
   state.selectedVerse = targetVerse;
@@ -788,6 +910,7 @@ async function loadChapter(bookId, chapter, targetVerse = null, targetEnd = null
   });
   renderSlotPills();
   renderReader();
+  logRecentVisit();
   scheduleReadCheck();
   window.scrollTo({ top: 0, behavior: "instant" });
   if (targetVerse) {
@@ -814,7 +937,7 @@ function stepChapter(delta) {
     } else return;
   }
   markReadToday();
-  loadChapter(state.books[bIdx].id, chap);
+  loadChapter(state.books[bIdx].id, chap, null, null, false);
 }
 
 function openSlotMenu(slotIdx, anchor) {
@@ -904,7 +1027,7 @@ async function renderPassagePicker() {
     vg.innerHTML = vHtml;
     vg.querySelectorAll(".chap-btn").forEach((btn) => {
       btn.onclick = () => {
-        document.getElementById("modal-passage").classList.add("hidden");
+        closeAllModals();
         loadChapter(activeBook.id, state.pickerChapter, Number(btn.dataset.v));
       };
     });
@@ -1321,14 +1444,109 @@ function renderPrayerModal() {
   });
 }
 
+
+function openNoteModal(verseNum) {
+  const b = bookById(state.prefs.book_id);
+  state.activeNoteVerse = verseNum;
+  const existing = getNoteFor(b.id, state.prefs.chapter, verseNum);
+  state.noteDraftTint = (state.prefs.highlights || {})[verseKey(b.id, state.prefs.chapter, verseNum)] || "";
+  document.getElementById("note-modal-title").textContent = `Note — ${b.name} ${state.prefs.chapter}:${verseNum}`;
+  document.getElementById("note-editor-input").value = existing ? existing.text : "";
+  document.querySelectorAll("[data-hl-pick]").forEach((d) => {
+    d.classList.toggle("active", d.dataset.hlPick === state.noteDraftTint);
+  });
+  openModal("modal-note");
+  setTimeout(() => document.getElementById("note-editor-input").focus(), 30);
+}
+
+function openShareModal(clickedVerse) {
+  const b = bookById(state.prefs.book_id);
+  const maxV = state.rows.length ? state.rows[state.rows.length - 1].verse : clickedVerse;
+  let a = clickedVerse, z = clickedVerse;
+  if (isVerseSelected(clickedVerse)) {
+    a = Math.min(state.selectedVerse, state.selEnd ?? state.selectedVerse);
+    z = Math.max(state.selectedVerse, state.selEnd ?? state.selectedVerse);
+  }
+  document.getElementById("share-book-chap").textContent = `${b.name} ${state.prefs.chapter}:`;
+  const sEl = document.getElementById("share-start-v"), eEl = document.getElementById("share-end-v");
+  sEl.max = maxV; eEl.max = maxV; sEl.value = a; eEl.value = z;
+  const sel = document.getElementById("share-version-sel");
+  sel.innerHTML = [
+    ["ALL3", `All 3 Active (${state.prefs.slots.join(" · ")})`],
+    ...state.prefs.slots.map((c) => [c, `${c} Only`]),
+  ].map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+  openModal("modal-share-pop");
+}
+
+function buildGroupedShareText() {
+  const b = bookById(state.prefs.book_id);
+  const a = Math.max(1, Number(document.getElementById("share-start-v").value) || 1);
+  const z = Math.max(a, Number(document.getElementById("share-end-v").value) || a);
+  const mode = document.getElementById("share-version-sel").value;
+  const codes = mode === "ALL3" ? state.prefs.slots : [mode];
+  const picked = state.rows.filter((r) => r.verse >= a && r.verse <= z);
+  const ref = z > a ? `${b.name} ${state.prefs.chapter}:${a}–${z}` : `${b.name} ${state.prefs.chapter}:${a}`;
+
+  const sections = codes.map((c) => {
+    const lines = picked.map((r) => {
+      const txt = r.cells[c] ? cleanDisplayText(r.cells[c].text) : "";
+      return txt ? `${r.verse} ${txt}` : "";
+    }).filter(Boolean).join("\n");
+    return `[${c}]\n${lines}`;
+  }).join("\n\n");
+  return { ref, text: `${ref}\n\n${sections}` };
+}
+
+function renderNotesTab() {
+  const list = document.getElementById("notes-list");
+  const notes = state.prefs.notes || [];
+  if (!notes.length) {
+    list.innerHTML = `<div class="plan-day"><span style="color:var(--text-muted)">No sticky notes yet. Tap <strong>Note</strong> on any verse to add one.</span></div>`;
+    return;
+  }
+  list.innerHTML = notes.map((n, idx) => `
+    <div class="plan-day">
+      <div class="plan-day-left" style="flex-direction:column;align-items:flex-start;gap:3px;">
+        <strong>${escapeHtml(n.book_name)} ${n.chapter}:${n.verse} <small style="font-weight:400;color:var(--text-muted);">(${escapeHtml(n.updated_at)})</small></strong>
+        <span class="pin-snippet" style="color:var(--text);white-space:pre-wrap;">${escapeHtml(n.text)}</span>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="pill pill-primary" data-note-open="${idx}">Open</button>
+        <button class="pill pill-ghost" data-note-del="${idx}">&times;</button>
+      </div>
+    </div>
+  `).join("");
+  list.querySelectorAll("[data-note-open]").forEach((btn) => {
+    btn.onclick = () => {
+      const n = notes[Number(btn.dataset.noteOpen)];
+      closeAllModals();
+      loadChapter(n.book_id, n.chapter, n.verse);
+    };
+  });
+  list.querySelectorAll("[data-note-del]").forEach((btn) => {
+    btn.onclick = async () => {
+      state.prefs.notes.splice(Number(btn.dataset.noteDel), 1);
+      await persistPrefs();
+      renderNotesTab();
+      renderReader();
+    };
+  });
+}
+
 function renderPinsModal() {
-  const isPins = state.pinsTab !== "recent";
+  const tab = state.pinsTab || "pins";
+  const isPins = tab === "pins", isRec = tab === "recent", isNotes = tab === "notes";
   document.getElementById("tab-pins-view").classList.toggle("active", isPins);
-  document.getElementById("tab-recent-view").classList.toggle("active", !isPins);
+  document.getElementById("tab-recent-view").classList.toggle("active", isRec);
+  document.getElementById("tab-notes-view")?.classList.toggle("active", isNotes);
+  document.querySelector(".pins-io-bar")?.classList.toggle("hidden", !isPins);
   document.getElementById("pins-toolbar").classList.toggle("hidden", !isPins);
   document.getElementById("pins-list").classList.toggle("hidden", !isPins);
-  document.getElementById("recent-list").classList.toggle("hidden", isPins);
-  if (!isPins) { renderRecentList(); return; }
+  document.getElementById("recent-list").classList.toggle("hidden", !isRec);
+  document.getElementById("notes-io-bar")?.classList.toggle("hidden", !isNotes);
+  document.getElementById("notes-list")?.classList.toggle("hidden", !isNotes);
+  if (isRec) { renderRecentList(); return; }
+  if (isNotes) { renderNotesTab(); return; }
   const folders = allPinFolders();
   const bar = document.getElementById("pins-toolbar");
   bar.innerHTML = ["All", ...folders]
@@ -1404,40 +1622,46 @@ function renderPinsModal() {
 }
 
 function tryParseRef(raw) {
-  const m = raw.trim().match(/^([1-3]?\s*[a-zA-Z]+)\s+(\d+)(?:[:.](\d+))?$/);
+  const clean = raw.trim();
+  if (!clean) return null;
+  const m = clean.match(/^([1-3]?\s*[a-zA-Z]+)(?:\s+(\d+)(?:[:.](\d+))?)?$/);
   if (!m) return null;
   const qBook = m[1].toLowerCase().replace(/\s+/g, "");
-  const chap = Number(m[2]);
-  const verse = m[3] ? Number(m[3]) : null;
+  if (qBook.length < 2) return null;
   const match = state.books
     .map((b) => ({ b, s: bookMatchScore(b, qBook) }))
-    .filter((x) => x.s > 0)
+    .filter((x) => x.s >= 60)
     .sort((a, c) => c.s - a.s)[0]?.b;
-  if (!match || chap < 1 || chap > match.chapters) return null;
+  if (!match) return null;
+  const chap = m[2] ? Number(m[2]) : 1;
+  const verse = m[3] ? Number(m[3]) : null;
+  if (chap < 1 || chap > match.chapters) return null;
   return { book: match, chapter: chap, verse };
 }
 
 function populateSearchScope() {
   const sel = document.getElementById("search-scope");
   if (!sel || !state.prefs) return;
-  if (!state.searchScope) state.searchScope = state.prefs.slots[0];
+  if (!state.searchScope) state.searchScope = "ALL";
   const opts = [
-    ...state.translations.map((t) => [t.code, `in ${t.code}`]),
     ["ALL", "All Versions"],
+    ...state.translations.map((t) => [t.code, `in ${t.code}`]),
   ];
   sel.innerHTML = opts.map(([v, l]) => `<option value="${v}" ${v === state.searchScope ? "selected" : ""}>${l}</option>`).join("");
-  sel.onchange = () => { state.searchScope = sel.value; handleSearchInput(); };
+  sel.value = state.searchScope;
+  sel.onchange = () => { state.searchScope = sel.value; state.searchPage = 0; handleSearchInput(true); };
 }
 
-async function handleSearchInput() {
-  const val = document.getElementById("search-input").value;
-  const res = document.getElementById("search-results");
-  const primary = state.searchScope || state.prefs.slots[0];
+let searchTimer = null;
+let searchSeq = 0;
 
-  if (!val.trim()) {
-    res.innerHTML = `<div class="search-hit" style="cursor:default"><div class="search-hit-txt">Try typing a reference like <strong>Rom 8</strong>, <strong>Prov 24:16</strong>, or a keyword like <strong>wisdom</strong>.</div></div>`;
-    return;
-  }
+function renderSearchResultsView(val, ref, hits) {
+  const res = document.getElementById("search-results");
+  const pager = document.getElementById("search-pager");
+  const pageSize = 25;
+  const totalPages = Math.max(1, Math.ceil(hits.length / pageSize));
+  const page = Math.min(state.searchPage || 0, totalPages - 1);
+  state.searchPage = page;
 
   let html = "";
   const qLow = val.trim().toLowerCase();
@@ -1446,37 +1670,83 @@ async function handleSearchInput() {
   } else if (qLow === "kairos" || qLow === "stones") {
     html += `<div class="search-hit" style="cursor:default;"><div class="search-hit-ref">Luke 19:40 &mdash; Even the stones will cry out</div><div class="search-hit-txt">Built with Hyares for Kaslorin &middot; Bible: Kairos Collection</div></div>`;
   }
-  const ref = tryParseRef(val);
-  if (ref) {
+  if (ref && page === 0) {
     html += `
       <div class="search-hit" data-jump-book="${ref.book.id}" data-jump-chap="${ref.chapter}" data-jump-verse="${ref.verse || ""}">
-        <div class="search-hit-ref">Jump to ${ref.book.name} ${ref.chapter}${ref.verse ? ":" + ref.verse : ""}</div>
-        <div class="search-hit-txt">Open directly in your 3-Version Stack</div>
+        <div class="search-hit-ref">Open ${escapeHtml(ref.book.name)} ${ref.chapter}${ref.verse ? ":" + ref.verse : ""}</div>
+        <div class="search-hit-txt">Jump directly to chapter in your 3-Version Stack</div>
       </div>
     `;
   }
 
-  const hits = await invoke("search_verses", { query: val, translationCode: primary, limit: 40 });
-  html += hits
-    .map((h) => `
-      <div class="search-hit" data-jump-book="${h.book_id}" data-jump-chap="${h.chapter}" data-jump-verse="${h.verse}">
-        <div class="search-hit-ref">${h.book_name} ${h.chapter}:${h.verse}</div>
-        <div class="search-hit-txt">${escapeHtml(cleanDisplayText(h.text))}</div>
-      </div>
-    `)
-    .join("");
+  const slice = hits.slice(page * pageSize, (page + 1) * pageSize);
+  html += slice.map((h) => `
+    <div class="search-hit" data-jump-book="${h.book_id}" data-jump-chap="${h.chapter}" data-jump-verse="${h.verse}">
+      <div class="search-hit-ref">${escapeHtml(h.book_name)} ${h.chapter}:${h.verse}</div>
+      <div class="search-hit-txt">${escapeHtml(cleanDisplayText(h.text))}</div>
+    </div>
+  `).join("");
 
   res.innerHTML = html || `<div class="search-hit"><div class="search-hit-txt">No matches found.</div></div>`;
   const selahHit = res.querySelector("#hit-enter-selah");
   if (selahHit) selahHit.onclick = () => { closeAllModals(); toggleSelah(true); };
   res.querySelectorAll("[data-jump-book]").forEach((el) => {
     el.onclick = () => {
-      document.getElementById("modal-search").classList.add("hidden");
+      closeAllModals();
       const v = el.dataset.jumpVerse ? Number(el.dataset.jumpVerse) : null;
       loadChapter(Number(el.dataset.jumpBook), Number(el.dataset.jumpChap), v);
     };
   });
+
+  if (pager) {
+    if (hits.length > pageSize) {
+      pager.classList.remove("hidden");
+      pager.innerHTML = `
+        <button id="btn-sp-prev" class="pill pill-ghost" ${page === 0 ? "disabled" : ""}>&larr; Prev Page</button>
+        <span>Page ${page + 1} of ${totalPages} (${hits.length} hits)</span>
+        <button id="btn-sp-next" class="pill pill-primary" ${page + 1 >= totalPages ? "disabled" : ""}>Next Page &rarr;</button>
+      `;
+      pager.querySelector("#btn-sp-prev").onclick = () => { if (state.searchPage > 0) { state.searchPage--; renderSearchResultsView(val, ref, hits); res.scrollTop = 0; } };
+      pager.querySelector("#btn-sp-next").onclick = () => { if (state.searchPage + 1 < totalPages) { state.searchPage++; renderSearchResultsView(val, ref, hits); res.scrollTop = 0; } };
+    } else {
+      pager.classList.add("hidden");
+    }
+  }
 }
+
+async function handleSearchInput(immediate = false) {
+  const val = document.getElementById("search-input").value;
+  const res = document.getElementById("search-results");
+  const pager = document.getElementById("search-pager");
+  const primary = state.searchScope || "ALL";
+  state.searchPage = 0;
+
+  if (!val.trim()) {
+    if (pager) pager.classList.add("hidden");
+    res.innerHTML = `<div class="search-hit" style="cursor:default"><div class="search-hit-txt">Try a reference (<code>Rom 8</code> or <code>Genesis</code>), exact quotes (<code>"living water"</code>), or what's on your heart (e.g. <em>77 falls righteous man</em>, <em>deny me before men</em>).</div></div>`;
+    return;
+  }
+
+  const ref = tryParseRef(val);
+  renderSearchResultsView(val, ref, []);
+
+  clearTimeout(searchTimer);
+  const mySeq = ++searchSeq;
+  const run = async () => {
+    try {
+      const hits = await invoke("search_verses", { query: val, translationCode: primary, limit: 120 });
+      if (mySeq !== searchSeq) return;
+      renderSearchResultsView(val, ref, hits);
+    } catch (err) {
+      console.error("search_verses error:", err);
+      if (mySeq !== searchSeq) return;
+      renderSearchResultsView(val, ref, []);
+    }
+  };
+  if (immediate === true) run();
+  else searchTimer = setTimeout(run, 140);
+}
+
 
 function renderPlanModal() {
   const sel = document.getElementById("plan-select");
@@ -1488,6 +1758,8 @@ function renderPlanModal() {
   const planKey = state.prefs.active_plan in allPlans ? state.prefs.active_plan : "gospels_psalms";
   const plan = allPlans[planKey];
   const done = new Set(state.prefs.completed_days[planKey] || []);
+  const rdays = (state.prefs.reading_days || []).length;
+  if (document.getElementById("plan-days-word")) document.getElementById("plan-days-word").textContent = `${rdays} day${rdays === 1 ? "" : "s"} in the Word`;
   document.getElementById("plan-progress").textContent = `${done.size} / ${plan.days.length} done`;
 
   const list = document.getElementById("plan-days");
@@ -1674,7 +1946,7 @@ async function init() {
     renderPassagePicker();
   };
   document.getElementById("btn-open-chap-now").onclick = () => {
-    document.getElementById("modal-passage").classList.add("hidden");
+    closeAllModals();
     loadChapter(state.pickerBookId, state.pickerChapter || 1);
   };
 
@@ -1689,7 +1961,24 @@ async function init() {
   document.getElementById("tab-pins-view").onclick = () => { state.pinsTab = "pins"; renderPinsModal(); };
   document.getElementById("tab-recent-view").onclick = () => { state.pinsTab = "recent"; renderPinsModal(); };
   window.addEventListener("popstate", () => closeAllModals(true));
-  document.getElementById("btn-pins").onclick = () => {
+
+  const backBtn = document.getElementById("btn-jump-back");
+  if (backBtn) {
+    backBtn.onclick = () => {
+      const prev = state.jumpStack.pop();
+      backBtn.classList.toggle("hidden", state.jumpStack.length === 0);
+      if (prev) loadChapter(prev.bookId, prev.chapter, prev.verse, null, false);
+    };
+  }
+  const histBtn = document.getElementById("btn-history");
+  if (histBtn) {
+    histBtn.onclick = () => {
+      state.pinsTab = "recent";
+      renderPinsModal();
+      openModal("modal-pins");
+    };
+  }
+  document.getElementById("btn-pins").onclick = () => { state.pinsTab = "pins";
     renderPinsModal();
     openModal("modal-pins");
   };
@@ -1703,7 +1992,7 @@ async function init() {
     handleSearchInput();
   };
   document.getElementById("btn-jump").onclick = openSearch;
-  document.getElementById("search-input").oninput = handleSearchInput;
+  document.getElementById("search-input").oninput = () => handleSearchInput(false);
 
   document.getElementById("btn-plan").onclick = () => {
     renderPlanModal();
@@ -1782,6 +2071,94 @@ async function init() {
   };
   document.getElementById("btn-save-verse-card").onclick = saveVerseCardPng;
 
+
+  document.getElementById("tab-notes-view").onclick = () => { state.pinsTab = "notes"; renderPinsModal(); };
+
+  document.getElementById("btn-backup-notes").onclick = async () => {
+    const payload = JSON.stringify({
+      kairos_notes: 1,
+      notes: state.prefs.notes || [],
+      highlights: state.prefs.highlights || {},
+    }, null, 2);
+    await exportFileOrShare(`kairos-notes-backup-${localDateKey()}.txt`, payload);
+  };
+  document.getElementById("inp-import-notes").onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const obj = JSON.parse(await file.text());
+      const srcNotes = Array.isArray(obj.notes) ? obj.notes : (obj.prefs?.notes || []);
+      const srcHl = obj.highlights || obj.prefs?.highlights || {};
+      if (!state.prefs.notes) state.prefs.notes = [];
+      if (!state.prefs.highlights) state.prefs.highlights = {};
+      let added = 0;
+      srcNotes.forEach((nn) => {
+        if (!nn.book_id || !nn.chapter || !nn.verse) return;
+        const exists = state.prefs.notes.some((x) => x.book_id === nn.book_id && x.chapter === nn.chapter && x.verse === nn.verse && x.text === nn.text);
+        if (!exists) { state.prefs.notes.push(nn); added++; }
+      });
+      Object.entries(srcHl).forEach(([k, v]) => { if (!state.prefs.highlights[k]) state.prefs.highlights[k] = v; });
+      await persistPrefs();
+      renderNotesTab();
+      renderReader();
+      showToast(`Restored ${added} note(s)!`);
+    } catch (_) {
+      showToast("Invalid notes backup file");
+    }
+    e.target.value = "";
+  };
+
+  document.getElementById("btn-export-notes").onclick = async () => {
+    const notes = state.prefs.notes || [];
+    if (!notes.length) { showToast("No notes to export"); return; }
+    const txt = notes.map((n) => `${n.book_name} ${n.chapter}:${n.verse} (${n.updated_at})\n${n.text}`).join("\n\n---\n\n");
+    await exportFileOrShare(`kairos-notes-${localDateKey()}.txt`, `KAIROS STUDY NOTES\n\n${txt}`);
+  };
+  document.querySelectorAll("[data-hl-pick]").forEach((btn) => {
+    btn.onclick = () => {
+      state.noteDraftTint = btn.dataset.hlPick;
+      document.querySelectorAll("[data-hl-pick]").forEach((d) => d.classList.toggle("active", d === btn));
+    };
+  });
+  document.getElementById("btn-note-save").onclick = async () => {
+    const b = bookById(state.prefs.book_id);
+    const v = state.activeNoteVerse;
+    const txt = document.getElementById("note-editor-input").value.trim();
+    if (!state.prefs.notes) state.prefs.notes = [];
+    if (!state.prefs.highlights) state.prefs.highlights = {};
+    const k = verseKey(b.id, state.prefs.chapter, v);
+    if (state.noteDraftTint) state.prefs.highlights[k] = state.noteDraftTint;
+    else delete state.prefs.highlights[k];
+    state.prefs.notes = state.prefs.notes.filter((n) => !(n.book_id === b.id && n.chapter === state.prefs.chapter && n.verse === v));
+    if (txt) {
+      state.prefs.notes.unshift({ book_id: b.id, book_name: b.name, chapter: state.prefs.chapter, verse: v, text: txt, tint: state.noteDraftTint, updated_at: localDateKey() });
+    }
+    closeAllModals();
+    await persistPrefs();
+    renderReader();
+    showToast("Saved!");
+  };
+  document.getElementById("btn-note-delete").onclick = async () => {
+    const b = bookById(state.prefs.book_id), v = state.activeNoteVerse;
+    state.prefs.notes = (state.prefs.notes || []).filter((n) => !(n.book_id === b.id && n.chapter === state.prefs.chapter && n.verse === v));
+    if (state.prefs.highlights) delete state.prefs.highlights[verseKey(b.id, state.prefs.chapter, v)];
+    closeAllModals();
+    await persistPrefs();
+    renderReader();
+    showToast("Cleared note & highlight");
+  };
+  document.getElementById("btn-share-go").onclick = async () => {
+    const { ref, text } = buildGroupedShareText();
+    closeAllModals();
+    await shareOrCopy(ref, text);
+  };
+  document.getElementById("btn-share-copy").onclick = async () => {
+    const { ref, text } = buildGroupedShareText();
+    closeAllModals();
+    await navigator.clipboard.writeText(text);
+    showToast(`Copied ${ref}`);
+  };
+
   document.getElementById("btn-prayer").onclick = () => {
     renderPrayerModal();
     openModal("modal-prayer");
@@ -1854,8 +2231,12 @@ async function init() {
 
   if (document.getElementById("btn-pick-backup-dir")) {
     document.getElementById("btn-pick-backup-dir").onclick = async () => {
-      const name = await invoke("pick_android_backup_dir");
-      if (name) showToast(`Backup folder: ${name}`);
+      try {
+        const name = await invoke("pick_android_backup_dir");
+        if (name) showToast(`Backup folder set: ${name}`);
+      } catch (err) {
+        showToast("Could not open folder picker");
+      }
     };
   }
   document.getElementById("btn-export-backup").onclick = async () => {
@@ -1868,11 +2249,14 @@ async function init() {
     try {
       const obj = JSON.parse(await file.text());
       if (!obj.prefs || !Array.isArray(obj.prefs.slots)) throw new Error("bad");
-      state.prefs = obj.prefs;
+      state.prefs = { ...state.prefs, ...obj.prefs };
+      (state.prefs.pins || []).forEach((p) => {
+        if (p.folder && !state.customFolders.includes(p.folder)) state.customFolders.push(p.folder);
+      });
       await persistPrefs();
       applyThemeAndTypography();
-      await loadChapter(state.prefs.book_id, state.prefs.chapter);
-      showToast("Progress recovered!");
+      await loadChapter(state.prefs.book_id, state.prefs.chapter, null, null, false);
+      showToast("Progress & settings recovered!");
     } catch (_) {
       showToast("Invalid backup file");
     }
