@@ -784,16 +784,20 @@ function renderReader() {
 
     reader.querySelectorAll("[data-inline-scroll]").forEach((btn) => {
       btn.onclick = async () => {
+        const anchor = captureAnchor();
         state.prefs.scroll_style = btn.dataset.inlineScroll;
         applyThemeAndTypography();
         renderReader();
+        restoreAnchor(anchor);
         await persistPrefs();
       };
     });
     reader.querySelectorAll("[data-inline-density]").forEach((btn) => {
       btn.onclick = async () => {
+        const anchor = captureAnchor();
         state.prefs.scroll_density = btn.dataset.inlineDensity;
         renderReader();
+        restoreAnchor(anchor);
         await persistPrefs();
       };
     });
@@ -895,7 +899,68 @@ function pushJumpBack() {
   if (backBtn) backBtn.classList.toggle("hidden", state.jumpStack.length === 0);
 }
 
-async function loadChapter(bookId, chapter, targetVerse = null, targetEnd = null, recordJump = true) {
+function captureAnchor() {
+  const stage = document.getElementById("ew-stage");
+  const isEW = stage && (state.prefs.view_mode === "scroll" || state.prefs.view_mode === "bubbles");
+  if (isEW) {
+    const sr = stage.getBoundingClientRect();
+    const railW = state.prefs.view_mode === "scroll" && state.prefs.scroll_style !== "compact" ? (window.innerWidth <= 760 ? 84 : 104) : 16;
+    const probeX = sr.left + railW;
+    const items = Array.from(stage.querySelectorAll("[data-verse]"));
+    for (const el of items) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0) continue;
+      if (r.right > probeX) {
+        return { verse: Number(el.dataset.verse), offset: r.left, axis: "x", scrollX: stage.scrollLeft, scrollY: window.scrollY };
+      }
+    }
+    return { verse: state.selectedVerse || 1, offset: null, axis: "x", scrollX: stage.scrollLeft, scrollY: window.scrollY };
+  }
+  const topbar = document.querySelector(".topbar");
+  const topEdge = (topbar ? topbar.getBoundingClientRect().bottom : 64) + 10;
+  const rows = Array.from(document.querySelectorAll("#reader [data-verse]"));
+  for (const el of rows) {
+    const r = el.getBoundingClientRect();
+    if (r.height === 0) continue;
+    if (r.bottom > topEdge) {
+      return { verse: Number(el.dataset.verse), offset: r.top, axis: "y", scrollX: 0, scrollY: window.scrollY };
+    }
+  }
+  return { verse: state.selectedVerse || 1, offset: null, axis: "y", scrollX: 0, scrollY: window.scrollY };
+}
+
+function restoreAnchor(anchor) {
+  if (!anchor) return;
+  const stage = document.getElementById("ew-stage");
+  const isEW = stage && (state.prefs.view_mode === "scroll" || state.prefs.view_mode === "bubbles");
+  if (isEW) {
+    if (anchor.scrollY) window.scrollTo({ top: anchor.scrollY, behavior: "instant" });
+    if (anchor.axis === "x" && anchor.offset !== null) {
+      stage.scrollLeft = anchor.scrollX || 0;
+      const el = stage.querySelector(`[data-verse="${anchor.verse}"]`);
+      if (el) stage.scrollLeft += (el.getBoundingClientRect().left - anchor.offset);
+    } else {
+      const el = stage.querySelector(`[data-verse="${anchor.verse}"]`);
+      if (el) el.scrollIntoView({ behavior: "instant", inline: "center", block: "nearest" });
+    }
+    return;
+  }
+  if (anchor.axis === "y" && anchor.offset !== null) {
+    window.scrollTo({ top: anchor.scrollY || 0, behavior: "instant" });
+    const el = document.querySelector(`#reader [data-verse="${anchor.verse}"]`);
+    if (el) window.scrollBy({ top: el.getBoundingClientRect().top - anchor.offset, behavior: "instant" });
+  } else {
+    const el = document.querySelector(`#reader [data-verse="${anchor.verse}"]`);
+    if (el) {
+      const topbar = document.querySelector(".topbar");
+      const topEdge = (topbar ? topbar.getBoundingClientRect().bottom : 64) + 14;
+      window.scrollTo({ top: Math.max(0, window.scrollY + el.getBoundingClientRect().top - topEdge), behavior: "instant" });
+    }
+  }
+}
+
+async function loadChapter(bookId, chapter, targetVerse = null, targetEnd = null, recordJump = true, keepSpot = false) {
+  const anchor = keepSpot ? captureAnchor() : null;
   if (recordJump && state.rows.length && (bookId !== state.prefs.book_id || chapter !== state.prefs.chapter)) {
     pushJumpBack();
   }
@@ -912,12 +977,16 @@ async function loadChapter(bookId, chapter, targetVerse = null, targetEnd = null
   renderReader();
   logRecentVisit();
   scheduleReadCheck();
-  window.scrollTo({ top: 0, behavior: "instant" });
-  if (targetVerse) {
-    setTimeout(() => {
-      const target = document.querySelector(`[data-verse="${targetVerse}"]`);
-      if (target) target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-    }, 40);
+  if (keepSpot && anchor) {
+    restoreAnchor(anchor);
+  } else {
+    window.scrollTo({ top: 0, behavior: "instant" });
+    if (targetVerse) {
+      setTimeout(() => {
+        const target = document.querySelector(`[data-verse="${targetVerse}"]`);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      }, 40);
+    }
   }
   await persistPrefs();
 }
@@ -963,7 +1032,7 @@ function openSlotMenu(slotIdx, anchor) {
     btn.onclick = async () => {
       state.prefs.slots[slotIdx] = btn.dataset.code;
       menu.classList.add("hidden");
-      await loadChapter(state.prefs.book_id, state.prefs.chapter, state.selectedVerse);
+      await loadChapter(state.prefs.book_id, state.prefs.chapter, state.selectedVerse, state.selEnd, false, true);
       await loadDailyCard(false);
     };
   });
@@ -2327,6 +2396,81 @@ async function init() {
       if (e.target === m) m.classList.add("hidden");
     });
   });
+
+
+  // --- Pinch-to-Zoom (Android) & Ctrl+Wheel Zoom (Desktop) ---
+  const readerEl = document.getElementById("reader");
+  const zoomHud = document.createElement("div");
+  zoomHud.className = "zoom-hud hidden";
+  document.body.appendChild(zoomHud);
+  let zoomHudTimer = null;
+  function showZoomHud(sz) {
+    zoomHud.textContent = `${Math.round(sz)}px`;
+    zoomHud.classList.remove("hidden");
+    clearTimeout(zoomHudTimer);
+  }
+  function hideZoomHudSoon() {
+    clearTimeout(zoomHudTimer);
+    zoomHudTimer = setTimeout(() => zoomHud.classList.add("hidden"), 700);
+  }
+
+  let pinching = false, pinchDist0 = 0, pinchSize0 = 18, pinchCur = 18, pinchAnchor = null;
+  readerEl.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2) {
+      pinching = true;
+      const [a, b] = e.touches;
+      pinchDist0 = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      pinchSize0 = Number(state.prefs.font_size || 18);
+      pinchCur = pinchSize0;
+      pinchAnchor = captureAnchor();
+    }
+  }, { passive: true });
+
+  readerEl.addEventListener("touchmove", (e) => {
+    if (!pinching || e.touches.length !== 2) return;
+    e.preventDefault();
+    const [a, b] = e.touches;
+    const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (pinchDist0 > 12) {
+      pinchCur = Math.max(11, Math.min(34, Math.round(pinchSize0 * (dist / pinchDist0) * 2) / 2));
+      document.documentElement.style.setProperty("--reader-size", `${pinchCur}px`);
+      showZoomHud(pinchCur);
+    }
+  }, { passive: false });
+
+  async function finishPinch() {
+    if (!pinching) return;
+    pinching = false;
+    hideZoomHudSoon();
+    const rounded = Math.round(pinchCur);
+    if (rounded !== state.prefs.font_size) {
+      state.prefs.font_size = rounded;
+      applyThemeAndTypography();
+      if (state.prefs.view_mode === "scroll") renderReader();
+      restoreAnchor(pinchAnchor);
+      await persistPrefs();
+    }
+  }
+  readerEl.addEventListener("touchend", (e) => { if (e.touches.length < 2) finishPinch(); }, { passive: true });
+  readerEl.addEventListener("touchcancel", () => finishPinch(), { passive: true });
+
+  let wheelZoomSave = null;
+  readerEl.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const anchor = captureAnchor();
+    const next = Math.max(11, Math.min(34, Number(state.prefs.font_size || 18) + (e.deltaY < 0 ? 1 : -1)));
+    if (next !== state.prefs.font_size) {
+      state.prefs.font_size = next;
+      applyThemeAndTypography();
+      if (state.prefs.view_mode === "scroll") renderReader();
+      restoreAnchor(anchor);
+      showZoomHud(next);
+      hideZoomHudSoon();
+      clearTimeout(wheelZoomSave);
+      wheelZoomSave = setTimeout(() => persistPrefs(), 250);
+    }
+  }, { passive: false });
 
   document.addEventListener("click", (e) => {
     const menu = document.getElementById("slot-menu");
